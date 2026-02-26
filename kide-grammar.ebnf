@@ -1,0 +1,134 @@
+(* ========================================================================= *)
+(* 1. ROOT & STRATEGIC DESIGN (The Big Picture)                              *)
+(* ========================================================================= *)
+
+Program         ::= { Context }
+Context         ::= "context" Identifier "{" { ContextElement } "}"
+
+ContextElement  ::= Dictionary 
+                  | Aggregate 
+                  | Entity 
+                  | ValueObject 
+                  | Policy 
+                  | Saga 
+                  | View 
+                  | Adapter 
+                  | ExternalSource
+
+Dictionary      ::= "dictionary" "{" { DictEntry } "}"
+DictEntry       ::= StringLiteral "=>" ( StringLiteral | "forbidden" )
+
+(* ========================================================================= *)
+(* 2. THE BINDING ENGINE (The Tree-sitter Link)                              *)
+(* ========================================================================= *)
+
+Binding         ::= "bound to" StringLiteral [ "symbol" StringLiteral ] [ "hash" StringLiteral ]
+
+(* ========================================================================= *)
+(* 3. TACTICAL DESIGN (The Domain Objects)                                   *)
+(* ========================================================================= *)
+
+(* Aggregates are the only things that can be directly bound at the root level *)
+Aggregate       ::= "aggregate" Identifier [ Binding ] "{" { AggregateMember } "}"
+AggregateMember ::= Field | Genesis | Invariant | Command | EventDef | Projection
+
+Entity          ::= "entity" Identifier "{" { EntityMember } "}"
+EntityMember    ::= Field | Method | Invariant
+
+ValueObject     ::= "value" Identifier "{" { ValueMember } "}"
+ValueMember     ::= Field | Operation | ComputedProp
+
+(* ========================================================================= *)
+(* 4. BEHAVIOR & RULES (The Logic)                                           *)
+(* ========================================================================= *)
+
+Genesis         ::= "genesis" Identifier "(" [ ParameterList ] ")" ( Block | Binding )
+Invariant       ::= "invariant" Identifier ( Block | Binding )
+Command         ::= "command" Identifier "(" [ ParameterList ] ")" ( Block | Binding )
+Method          ::= "func" Identifier "(" [ ParameterList ] ")" [ "->" Type ] ( Block | Binding )
+Operation       ::= "op" Operator "(" Parameter ")" "->" Type ( Block | Binding )
+
+EventDef        ::= "event" Identifier "{" { Field } "}"
+Projection      ::= "projection" "{" { ComputedProp } "}"
+ComputedProp    ::= "get" Identifier "=>" Expression
+
+(* ========================================================================= *)
+(* 5. ADVANCED ARCHITECTURE PATTERNS                                         *)
+(* ========================================================================= *)
+
+Policy          ::= "policy" Identifier "{" { Method } "}"
+
+Saga            ::= "saga" Identifier "{" SagaStart { SagaStep } "}"
+SagaStart       ::= "start on" Identifier "(" Identifier ")" Block
+SagaStep        ::= "on" Identifier "(" Identifier ")" Block
+
+View            ::= "view" Identifier "{" ViewIndex ViewState { ViewHandler } "}"
+ViewIndex       ::= "index by" Identifier
+ViewState       ::= "state" "{" { Field } "}"
+ViewHandler     ::= "on" Identifier "(" Identifier ")" Block
+
+ExternalSource  ::= "external source" Identifier "{" "protocol:" Identifier "endpoint:" StringLiteral "}"
+Adapter         ::= "adapter" Identifier "for" Identifier "{" { Method } "}"
+
+(* ========================================================================= *)
+(* 6. TYPES & PARAMETERS                                                     *)
+(* ========================================================================= *)
+
+Field           ::= Identifier ":" Type
+ParameterList   ::= Parameter { "," Parameter }
+Parameter       ::= Identifier ":" Type
+
+Type            ::= PrimitiveType | CollectionType | MapType | Identifier
+PrimitiveType   ::= "String" | "Int" | "Decimal" | "Boolean" | "Date" | "Timestamp" | "Void"
+CollectionType  ::= "List" "<" Type ">"
+MapType         ::= "Map" "<" Type "," Type ">"
+
+(* ========================================================================= *)
+(* 7. STATEMENTS & EXPRESSIONS (The Inner Block)                             *)
+(* ========================================================================= *)
+
+Block           ::= "{" { Statement } "}"
+
+Statement       ::= VarDeclaration 
+                  | Assignment 
+                  | EmitStatement 
+                  | DispatchStatement 
+                  | TerminateStatement
+                  | AssertStatement 
+                  | IfStatement 
+                  | ForeachStatement 
+                  | ReturnStatement 
+                  | ThrowStatement 
+                  | ExpressionStatement
+
+VarDeclaration  ::= ("val" | "var") Identifier [ "=" Expression ]
+Assignment      ::= Expression "=" Expression
+EmitStatement   ::= "emit" Identifier "(" [ ArgumentList ] ")"
+DispatchStatement::= "dispatch" Identifier "." Identifier "(" [ ArgumentList ] ")"
+TerminateStatement::= "terminate with status" Identifier
+AssertStatement ::= "assert" "(" Expression "," StringLiteral ")"
+IfStatement     ::= "if" "(" Expression ")" Block [ "else" Block ]
+ForeachStatement::= "foreach" Identifier "in" Expression Block
+ReturnStatement ::= "return" [ Expression ]
+ThrowStatement  ::= "throw" Identifier "(" [ ArgumentList ] ")"
+ExpressionStatement ::= Expression
+
+ArgumentList    ::= Expression { "," Expression }
+Expression      ::= Identifier | Literal | MemberAccess | MethodCall | BinaryOp
+
+MemberAccess    ::= Expression "." Identifier
+MethodCall      ::= Expression "." Identifier "(" [ ArgumentList ] ")"
+BinaryOp        ::= Expression Operator Expression
+
+Operator        ::= "+" | "-" | "*" | "/" | "==" | "!=" | "<" | ">" | "<=" | ">="
+
+(* ========================================================================= *)
+(* 8. TERMINALS (Lexical tokens)                                             *)
+(* ========================================================================= *)
+
+Identifier      ::= [a-zA-Z_] { [a-zA-Z0-9_] }
+StringLiteral   ::= '"' { AnyCharacter } '"'
+IntLiteral      ::= Digit { Digit }
+DecimalLiteral  ::= Digit { Digit } "." Digit { Digit }
+BooleanLiteral  ::= "true" | "false"
+Digit           ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
