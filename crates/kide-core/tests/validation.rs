@@ -1575,6 +1575,44 @@ source = """
     );
 }
 
+#[test]
+fn shipping_co_example_produces_no_errors_or_warnings() {
+    let example_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/shipping-co/domain/main.kide");
+    if !example_path.exists() {
+        eprintln!(
+            "skipping shipping-co integration test: {} not found",
+            example_path.display()
+        );
+        return;
+    }
+
+    let report = check_file(&example_path).unwrap();
+
+    let errors_and_warnings: Vec<_> = report
+        .violations
+        .iter()
+        .filter(|v| {
+            matches!(
+                v.severity,
+                ViolationSeverity::Error | ViolationSeverity::Warning
+            )
+        })
+        .collect();
+
+    assert!(
+        errors_and_warnings.is_empty(),
+        "shipping-co should have no errors or warnings, but found:\n{}",
+        errors_and_warnings
+            .iter()
+            .map(|v| format!("  {} [{}] {}", v.severity.as_str(), v.code, v.message))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    assert_eq!(report.contexts, 5, "shipping-co should have 5 contexts");
+}
+
 fn find_lsp_position(source: &str, needle: &str) -> (u32, u32) {
     let idx = source.find(needle).unwrap();
     let prefix = &source[..idx];
