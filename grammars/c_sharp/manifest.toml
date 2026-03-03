@@ -1,0 +1,19 @@
+language = "c_sharp"
+version = "0.23.1"
+wasm_file = "tree-sitter-c_sharp.wasm"
+extensions = [".cs"]
+display_name = "C#"
+
+[queries]
+symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (using_directive)
+  (identifier)
+  (generic_name)
+  (qualified_name)
+  (invocation_expression)
+] @reference
+"""

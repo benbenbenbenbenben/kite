@@ -1,0 +1,19 @@
+language = "go"
+version = "0.23.4"
+wasm_file = "tree-sitter-go.wasm"
+extensions = [".go"]
+display_name = "Go"
+
+[queries]
+symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (import_spec)
+  (type_identifier)
+  (call_expression)
+  (qualified_type)
+  (selector_expression)
+] @reference
+"""

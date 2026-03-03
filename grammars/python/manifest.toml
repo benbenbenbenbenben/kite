@@ -1,0 +1,18 @@
+language = "python"
+version = "0.23.5"
+wasm_file = "tree-sitter-python.wasm"
+extensions = [".py"]
+display_name = "Python"
+
+[queries]
+symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (import_statement)
+  (import_from_statement)
+  (call)
+  (identifier)
+] @reference
+"""
