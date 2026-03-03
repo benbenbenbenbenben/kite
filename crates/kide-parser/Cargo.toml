@@ -11,3 +11,4 @@ rust-sitter = { git = "https://github.com/benbenbenbenbenben/krust-sitter" }
 
 [build-dependencies]
 rust-sitter-tool = { git = "https://github.com/benbenbenbenbenben/krust-sitter" }
+serde_json = "1"
