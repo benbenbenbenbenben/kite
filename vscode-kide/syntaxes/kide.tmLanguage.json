@@ -3,7 +3,7 @@
   "name": "Kide",
   "patterns": [
     {
-      "match": "\\b(context|dictionary|aggregate|command|invariant|bound|to|symbol|hash|forbidden)\\b",
+      "match": "\\b(context|dictionary|boundary|aggregate|command|invariant|bound|to|symbol|hash|forbid|forbidden)\\b",
       "name": "keyword.control.kide"
     },
     {
