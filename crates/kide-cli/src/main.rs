@@ -19,6 +19,14 @@ enum Commands {
         #[arg(default_value = "domain/main.kide")]
         file: PathBuf,
     },
+    /// Auto-format a .kide spec file.
+    Fmt {
+        #[arg(default_value = "domain/main.kide")]
+        file: PathBuf,
+        /// Write changes in place (default: print to stdout)
+        #[arg(long)]
+        write: bool,
+    },
     /// Start the integrated Language Server Protocol endpoint over stdio.
     StartLsp,
 }
@@ -47,6 +55,16 @@ fn main() -> Result<()> {
                 if report.has_errors() {
                     std::process::exit(1);
                 }
+            }
+        }
+        Commands::Fmt { file, write } => {
+            let source = std::fs::read_to_string(&file)?;
+            let formatted = kide_core::format_source(&source)?;
+            if write {
+                std::fs::write(&file, &formatted)?;
+                println!("✨ Formatted {}", file.display());
+            } else {
+                print!("{}", formatted);
             }
         }
         Commands::StartLsp => run_lsp()?,

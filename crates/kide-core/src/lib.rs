@@ -1,9 +1,11 @@
 mod adapter_runtime;
+mod formatter;
 mod grammar_registry;
 mod wasm_adapter;
 
 use adapter_runtime::AdapterRuntimeEngine;
 use anyhow::{Context, Result};
+pub use formatter::format_source;
 use grammar_registry::GrammarRegistry;
 use kide_parser::grammar::{
     Aggregate, AggregateMember, Binding, BindingHash, BindingSymbol, Boundary, BoundaryEntry,
