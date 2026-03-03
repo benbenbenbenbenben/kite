@@ -31,6 +31,8 @@ pub const CODE_CONTEXT_BOUNDARY_DUPLICATE_FORBID: &str = "CONTEXT_BOUNDARY_DUPLI
 pub const CODE_CONTEXT_BOUNDARY_SELF_FORBID: &str = "CONTEXT_BOUNDARY_SELF_FORBID";
 pub const CODE_BINDING_HASH_INVALID_FORMAT: &str = "BINDING_HASH_INVALID_FORMAT";
 pub const CODE_BINDING_HASH_MISMATCH: &str = "BINDING_HASH_MISMATCH";
+pub const CODE_BINDING_FILE_EMPTY: &str = "BINDING_FILE_EMPTY";
+pub const CODE_BINDING_SYMBOL_MISSING: &str = "BINDING_SYMBOL_MISSING";
 pub const DOCS_BINDING_FILE_NOT_FOUND: &str =
     "https://docs.kide.dev/diagnostics/binding-file-not-found";
 pub const DOCS_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY: &str =
@@ -61,11 +63,15 @@ pub const DOCS_BINDING_HASH_INVALID_FORMAT: &str =
     "https://docs.kide.dev/diagnostics/binding-hash-invalid-format";
 pub const DOCS_BINDING_HASH_MISMATCH: &str =
     "https://docs.kide.dev/diagnostics/binding-hash-mismatch";
+pub const DOCS_BINDING_FILE_EMPTY: &str = "https://docs.kide.dev/diagnostics/binding-file-empty";
+pub const DOCS_BINDING_SYMBOL_MISSING: &str =
+    "https://docs.kide.dev/diagnostics/binding-symbol-missing";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViolationSeverity {
     Error,
     Warning,
+    Information,
 }
 
 impl ViolationSeverity {
@@ -73,6 +79,7 @@ impl ViolationSeverity {
         match self {
             Self::Error => "error",
             Self::Warning => "warning",
+            Self::Information => "information",
         }
     }
 }
@@ -752,9 +759,37 @@ fn validate_binding(
             docs_uri: Some(DOCS_BINDING_FILE_NOT_FOUND),
             span: Some(span_from_binding_target(binding)),
         });
+    } else if let Ok(content) = std::fs::read_to_string(&target_path) {
+        if content.trim().is_empty() {
+            violations.push(Violation {
+                severity: ViolationSeverity::Warning,
+                code: CODE_BINDING_FILE_EMPTY,
+                message: format!(
+                    "bound file '{}' exists but is empty; implementation may be missing",
+                    target_path.display()
+                ),
+                hint: Some("add implementation to the bound file or remove the binding".to_owned()),
+                docs_uri: Some(DOCS_BINDING_FILE_EMPTY),
+                span: Some(span_from_binding_target(binding)),
+            });
+        }
     }
 
     validate_binding_hash(binding, &target_path, target_exists, violations)?;
+
+    if binding.symbol.is_none() {
+        violations.push(Violation {
+            severity: ViolationSeverity::Information,
+            code: CODE_BINDING_SYMBOL_MISSING,
+            message: format!(
+                "binding to '{}' has no symbol clause; consider adding one for precise verification",
+                target_path.display()
+            ),
+            hint: Some("add a 'symbol' clause to bind to a specific declaration".to_owned()),
+            docs_uri: Some(DOCS_BINDING_SYMBOL_MISSING),
+            span: Some(span_from_binding_target(binding)),
+        });
+    }
 
     if let Some(symbol_binding) = &binding.symbol {
         let symbol = unquote(&symbol_binding.symbol.text);

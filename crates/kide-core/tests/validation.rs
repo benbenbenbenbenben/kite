@@ -1,11 +1,13 @@
 use kide_core::{
-    check_file, definition_at, ViolationSeverity, CODE_BINDING_FILE_NOT_FOUND,
-    CODE_BINDING_HASH_INVALID_FORMAT, CODE_BINDING_HASH_MISMATCH, CODE_BINDING_SYMBOL_NOT_FOUND,
+    check_file, definition_at, ViolationSeverity, CODE_BINDING_FILE_EMPTY,
+    CODE_BINDING_FILE_NOT_FOUND, CODE_BINDING_HASH_INVALID_FORMAT, CODE_BINDING_HASH_MISMATCH,
+    CODE_BINDING_SYMBOL_MISSING, CODE_BINDING_SYMBOL_NOT_FOUND,
     CODE_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY, CODE_COMMAND_BINDING_ARITY_MISMATCH,
     CODE_COMMAND_BINDING_INTENT_SUSPICIOUS, CODE_CONTEXT_BOUNDARY_DUPLICATE_FORBID,
     CODE_CONTEXT_BOUNDARY_FORBIDDEN, CODE_CONTEXT_BOUNDARY_SELF_FORBID,
     CODE_DICTIONARY_DUPLICATE_KEY, CODE_DICTIONARY_TERM_FORBIDDEN, CODE_DICTIONARY_TERM_PREFERRED,
-    DOCS_BINDING_HASH_INVALID_FORMAT, DOCS_BINDING_HASH_MISMATCH, DOCS_BINDING_SYMBOL_NOT_FOUND,
+    DOCS_BINDING_FILE_EMPTY, DOCS_BINDING_HASH_INVALID_FORMAT, DOCS_BINDING_HASH_MISMATCH,
+    DOCS_BINDING_SYMBOL_MISSING, DOCS_BINDING_SYMBOL_NOT_FOUND,
     DOCS_COMMAND_BINDING_ARITY_MISMATCH, DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS,
     DOCS_CONTEXT_BOUNDARY_DUPLICATE_FORBID, DOCS_CONTEXT_BOUNDARY_FORBIDDEN,
     DOCS_CONTEXT_BOUNDARY_SELF_FORBID, DOCS_DICTIONARY_DUPLICATE_KEY,
@@ -848,7 +850,10 @@ pub struct UserAccount {}
     );
 
     let report = check_file(&kide_path).unwrap();
-    assert!(report.violations.is_empty());
+    assert!(report
+        .violations
+        .iter()
+        .all(|violation| violation.code == CODE_BINDING_SYMBOL_MISSING));
 }
 
 #[test]
@@ -1179,7 +1184,10 @@ pub struct Customer {}
     );
 
     let report = check_file(&kide_path).unwrap();
-    assert!(report.violations.is_empty());
+    assert!(report
+        .violations
+        .iter()
+        .all(|violation| violation.code == CODE_BINDING_SYMBOL_MISSING));
 }
 
 #[test]
@@ -1445,6 +1453,73 @@ fn definition_at_path_points_to_prisma_file_start() {
     assert!(definition.file_path.ends_with("prisma/schema.prisma"));
     assert_eq!(definition.span.start_line, 1);
     assert_eq!(definition.span.start_column, 1);
+}
+
+#[test]
+fn empty_bound_file_produces_warning() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(&temp_dir.path().join("src/domain/order.ts"), "");
+    let kide_path = temp_dir.path().join("main.kide");
+    create_file(
+        &kide_path,
+        r#"
+context SalesContext {
+  aggregate Order bound to "src/domain/order.ts" {
+    command ship() bound to "src/domain/order.ts" symbol "ship"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kide_path).unwrap();
+
+    let violation = report
+        .violations
+        .iter()
+        .find(|violation| {
+            violation.code == CODE_BINDING_FILE_EMPTY
+                && violation.severity == ViolationSeverity::Warning
+        })
+        .expect("expected empty file warning");
+    assert!(violation.message.contains("empty"));
+    assert!(violation.hint.is_some());
+    assert_eq!(violation.docs_uri, Some(DOCS_BINDING_FILE_EMPTY));
+    assert!(violation.span.is_some());
+}
+
+#[test]
+fn binding_without_symbol_clause_produces_information() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/domain/order.rs"),
+        r#"
+pub fn ship() {}
+"#,
+    );
+    let kide_path = temp_dir.path().join("main.kide");
+    create_file(
+        &kide_path,
+        r#"
+context SalesContext {
+  aggregate Order bound to "src/domain/order.rs" {}
+}
+"#,
+    );
+
+    let report = check_file(&kide_path).unwrap();
+
+    let violation = report
+        .violations
+        .iter()
+        .find(|violation| {
+            violation.code == CODE_BINDING_SYMBOL_MISSING
+                && violation.severity == ViolationSeverity::Information
+        })
+        .expect("expected missing symbol info diagnostic");
+    assert!(violation.message.contains("no symbol clause"));
+    assert!(violation.hint.is_some());
+    assert_eq!(violation.docs_uri, Some(DOCS_BINDING_SYMBOL_MISSING));
+    assert!(violation.span.is_some());
 }
 
 fn create_file(path: &Path, source: &str) {

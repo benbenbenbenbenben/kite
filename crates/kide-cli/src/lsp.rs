@@ -489,6 +489,7 @@ fn diagnostic_from_violation(violation: kide_core::Violation) -> Diagnostic {
     let severity = match violation.severity {
         kide_core::ViolationSeverity::Error => DiagnosticSeverity::ERROR,
         kide_core::ViolationSeverity::Warning => DiagnosticSeverity::WARNING,
+        kide_core::ViolationSeverity::Information => DiagnosticSeverity::INFORMATION,
     };
     let code = violation.code;
     let hint = violation.hint;
