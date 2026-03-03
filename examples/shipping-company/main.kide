@@ -1,9 +1,0 @@
-context SalesContext {
-  dictionary {
-    "User" => forbidden
-  }
-
-  aggregate Order {
-    command ship() bound to "src/domain/order.rs" symbol "Order::ship"
-  }
-}
