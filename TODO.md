@@ -13,7 +13,7 @@
 - [x] Intent check: add a write→read mismatch to demo `COMMAND_BINDING_INTENT_SUSPICIOUS`
 - [x] Dictionary: add a bound source that violates a forbidden term to demo the diagnostic
 - [x] Boundary: add a cross-context reference to demo `CONTEXT_BOUNDARY_FORBIDDEN`
-- [ ] Explore: warn when two aggregates in different contexts bind to the same file (shared kernel smell)
+- [x] Explore: warn when two aggregates in different contexts bind to the same file (shared kernel smell)
 - [ ] Explore: detect unused aggregate fields (declared but never referenced)
 
 ## LSP
@@ -22,7 +22,7 @@
 - [x] Completion: suggest context names in `forbid`, symbol names from bound files
 - [x] Rename: rename a command/invariant across the `.kide` file
 - [x] Semantic tokens: richer highlighting via LSP (complement TextMate grammar)
-- [ ] Workspace diagnostics: check all `.kide` files, not just the open one
+- [x] Workspace diagnostics: check all `.kide` files, not just the open one
 
 ## Grammar Support
 
@@ -40,7 +40,7 @@
 
 ## Tooling & CI
 
-- [ ] Add `kide fmt` — auto-formatter for `.kide` files
-- [ ] Add `kide init` — scaffold a new domain file from an existing codebase
+- [x] Add `kide fmt` — auto-formatter for `.kide` files
+- [x] Add `kide init` — scaffold a new domain file from an existing codebase
 - [x] CI: run `cargo test` + `kide check examples/` on every PR
-- [ ] Publish VS Code extension to marketplace
+- [ ] Publish VS Code extension to marketplace (defer, do not do this)
