@@ -8,7 +8,7 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/vscode-kide",
-        "${workspaceFolder}/shipping-co"
+        "${workspaceFolder}/examples"
       ],
       "outFiles": ["${workspaceFolder}/vscode-kide/out/**/*.js"],
       "preLaunchTask": "kide-extension: debug prep"
