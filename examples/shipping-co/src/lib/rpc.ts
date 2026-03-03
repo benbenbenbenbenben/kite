@@ -3,6 +3,12 @@
 // JSON-RPC 2.0 dispatch gateway with service registration and user principal
 // injection.
 
+export interface RpcGateway {
+  method: string;
+  serviceName: string;
+  serviceVersion: string;
+}
+
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
   method: string;

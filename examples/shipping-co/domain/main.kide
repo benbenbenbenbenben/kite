@@ -13,21 +13,21 @@ context IdentityAccessContext {
     forbid IntegrationContext
   }
 
-  aggregate KnownUserSession bound to "../src/lib/services/auth.ts" {
+  aggregate KnownUserSession bound to "../src/lib/services/auth.ts" symbol "KnownUserSession" {
     knownUserId: String
     email: String
     sessionIssuedAt: Timestamp
     sessionExpiresAt: Timestamp
     primaryDropShopId: String
-    command requestSession(email: String) bound to "../src/lib/services/auth.ts"
-    command verifyClaim(claim: String) bound to "../src/lib/services/auth.ts"
-    command getUserDetails(claim: String) bound to "../src/lib/services/auth.ts"
-    command refreshSession(claim: String) bound to "../src/lib/services/auth.ts"
-    command revokeSession(claim: String) bound to "../src/lib/services/auth.ts"
-    invariant SessionClaimsResolveSubject bound to "../src/lib/services/auth.ts"
-    invariant MembershipChecksUseAuthenticatedSubject bound to "../src/lib/services/auth.ts"
-    invariant ExpiredClaimsCannotAuthorizeMutations bound to "../src/lib/services/auth.ts"
-    invariant RevokedClaimsCannotBeRefreshed bound to "../src/lib/services/auth.ts"
+    command requestSession(email: String) bound to "../src/lib/services/auth.ts" symbol "requestSession"
+    command verifyClaim(claim: String) bound to "../src/lib/services/auth.ts" symbol "verifyClaim"
+    command getUserDetails(claim: String) bound to "../src/lib/services/auth.ts" symbol "getUserDetails"
+    command refreshSession(claim: String) bound to "../src/lib/services/auth.ts" symbol "refreshSession"
+    command revokeSession(claim: String) bound to "../src/lib/services/auth.ts" symbol "revokeSession"
+    invariant SessionClaimsResolveSubject bound to "../src/lib/services/auth.ts" symbol "assertSessionClaimsResolveSubject"
+    invariant MembershipChecksUseAuthenticatedSubject bound to "../src/lib/services/auth.ts" symbol "assertMembershipChecksUseAuthenticatedSubject"
+    invariant ExpiredClaimsCannotAuthorizeMutations bound to "../src/lib/services/auth.ts" symbol "assertExpiredClaimsCannotAuthorizeMutations"
+    invariant RevokedClaimsCannotBeRefreshed bound to "../src/lib/services/auth.ts" symbol "assertRevokedClaimsCannotBeRefreshed"
   }
 }
 
@@ -45,24 +45,24 @@ context DropShopOnboardingContext {
     forbid PaymentsAndFulfillmentContext
   }
 
-  aggregate DropShop bound to "../prisma/schema.prisma" {
+  aggregate DropShop bound to "../prisma/schema.prisma" symbol "DropShop" {
     dropShopId: String
     displayName: String
     legalName: String
     contactEmail: String
     isVerified: Boolean
-    command registerDropShop(registration: DropShopRegistration) bound to "../src/lib/services/registration.ts"
-    command verifyDropShopRegistration(verification: DropShopVerification) bound to "../src/lib/services/registration.ts"
-    command resendDropShopVerification(dropShopId: String) bound to "../src/lib/services/registration.ts"
-    command updateDropShopProfile(dropShopId: String, displayName: String, contactEmail: String) bound to "../src/lib/services/registration.ts"
-    command addAdminToDropShop(newAdminId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
-    command removeAdminFromDropShop(adminId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
-    command addUserToDropShop(newUserId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
-    command removeUserFromDropShop(userId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
-    invariant VerificationTokenMustBeUnverified bound to "../src/lib/services/registration.ts"
-    invariant OnlyExistingDropShopAdminsCanMutateMembership bound to "../src/lib/services/registration.ts"
-    invariant VerificationCodeExpiresBeforeConfirmation bound to "../src/lib/services/registration.ts"
-    invariant VerifiedDropShopsMustRetainAtLeastOneAdmin bound to "../src/lib/services/registration.ts"
+    command registerDropShop(registration: DropShopRegistration) bound to "../src/lib/services/registration.ts" symbol "registerDropShop"
+    command verifyDropShopRegistration(verification: DropShopVerification) bound to "../src/lib/services/registration.ts" symbol "verifyDropShopRegistration"
+    command resendDropShopVerification(dropShopId: String) bound to "../src/lib/services/registration.ts" symbol "resendDropShopVerification"
+    command updateDropShopProfile(dropShopId: String, displayName: String, contactEmail: String) bound to "../src/lib/services/registration.ts" symbol "updateDropShopProfile"
+    command addAdminToDropShop(newAdminId: String, dropShopId: String) bound to "../src/lib/services/registration.ts" symbol "addAdminToDropShop"
+    command removeAdminFromDropShop(adminId: String, dropShopId: String) bound to "../src/lib/services/registration.ts" symbol "removeAdminFromDropShop"
+    command addUserToDropShop(newUserId: String, dropShopId: String) bound to "../src/lib/services/registration.ts" symbol "addUserToDropShop"
+    command removeUserFromDropShop(userId: String, dropShopId: String) bound to "../src/lib/services/registration.ts" symbol "removeUserFromDropShop"
+    invariant VerificationTokenMustBeUnverified bound to "../src/lib/services/registration.ts" symbol "assertVerificationTokenMustBeUnverified"
+    invariant OnlyExistingDropShopAdminsCanMutateMembership bound to "../src/lib/services/registration.ts" symbol "assertOnlyExistingDropShopAdminsCanMutateMembership"
+    invariant VerificationCodeExpiresBeforeConfirmation bound to "../src/lib/services/registration.ts" symbol "assertVerificationCodeExpiresBeforeConfirmation"
+    invariant VerifiedDropShopsMustRetainAtLeastOneAdmin bound to "../src/lib/services/registration.ts" symbol "assertVerifiedDropShopsMustRetainAtLeastOneAdmin"
   }
 }
 
@@ -80,7 +80,7 @@ context BookingLifecycleContext {
     forbid PaymentsAndFulfillmentContext
   }
 
-  aggregate Drop bound to "../prisma/schema.prisma" {
+  aggregate Drop bound to "../prisma/schema.prisma" symbol "Drop" {
     dropId: String
     status: DropStatus
     customerReference: String
@@ -88,32 +88,32 @@ context BookingLifecycleContext {
     addresseeEmail: String
     createdAt: Timestamp
     dispatchedAt: Timestamp
-    command createDrop(request: DropShopBookingRequest) bound to "../src/lib/services/booking.ts"
-    command notifyDropDispatched(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
-    command notifyDropArrival(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
-    command notifyDropCollection(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
-    command cancelDrop(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
-    command transferDropToDropShop(dropId: String, targetDropShopId: String, claim: String) bound to "../src/lib/services/booking.ts"
-    command getDrop(dropIdOrClaim: String, claim: String) bound to "../src/lib/services/booking.ts"
-    command getCurrentUserDrops(claim: String) bound to "../src/lib/services/booking.ts"
-    command getDropshopDrops(dropshopId: String, claim: String) bound to "../src/lib/services/booking.ts"
-    invariant OnlyVerifiedDropShopsCanAcceptDropBookings bound to "../src/lib/services/booking.ts"
-    invariant DispatchRequiresDropCreatedStatus bound to "../src/lib/services/booking.ts"
-    invariant ArrivalRequiresDropShopMembership bound to "../src/lib/services/booking.ts"
-    invariant CollectionRequiresReceiverOrDropShopStaff bound to "../src/lib/services/booking.ts"
-    invariant CancellationRequiresDropCreatedStatus bound to "../src/lib/services/booking.ts"
-    invariant TransferRequiresVerifiedTargetDropShop bound to "../src/lib/services/booking.ts"
+    command createDrop(request: DropShopBookingRequest) bound to "../src/lib/services/booking.ts" symbol "createDrop"
+    command notifyDropDispatched(dropId: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "notifyDropDispatched"
+    command notifyDropArrival(dropId: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "notifyDropArrival"
+    command notifyDropCollection(dropId: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "notifyDropCollection"
+    command cancelDrop(dropId: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "cancelDrop"
+    command transferDropToDropShop(dropId: String, targetDropShopId: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "transferDropToDropShop"
+    command getDrop(dropIdOrClaim: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "getDrop"
+    command getCurrentUserDrops(claim: String) bound to "../src/lib/services/booking.ts" symbol "getCurrentUserDrops"
+    command getDropshopDrops(dropshopId: String, claim: String) bound to "../src/lib/services/booking.ts" symbol "getDropshopDrops"
+    invariant OnlyVerifiedDropShopsCanAcceptDropBookings bound to "../src/lib/services/booking.ts" symbol "assertOnlyVerifiedDropShopsCanAcceptDropBookings"
+    invariant DispatchRequiresDropCreatedStatus bound to "../src/lib/services/booking.ts" symbol "assertDispatchRequiresDropCreatedStatus"
+    invariant ArrivalRequiresDropShopMembership bound to "../src/lib/services/booking.ts" symbol "assertArrivalRequiresDropShopMembership"
+    invariant CollectionRequiresReceiverOrDropShopStaff bound to "../src/lib/services/booking.ts" symbol "assertCollectionRequiresReceiverOrDropShopStaff"
+    invariant CancellationRequiresDropCreatedStatus bound to "../src/lib/services/booking.ts" symbol "assertCancellationRequiresDropCreatedStatus"
+    invariant TransferRequiresVerifiedTargetDropShop bound to "../src/lib/services/booking.ts" symbol "assertTransferRequiresVerifiedTargetDropShop"
   }
 
-  aggregate DropShopSearch bound to "../src/lib/services/booking.ts" {
+  aggregate DropShopSearch bound to "../src/lib/services/booking.ts" symbol "DropShopSearch" {
     query: String
     region: String
     radiusKm: Int
-    command findDropShop(query: SimpleQuery) bound to "../src/lib/services/booking.ts"
-    command findDropShopsNear(postcode: String, radiusKm: Int, claim: String) bound to "../src/lib/services/booking.ts"
-    command addressSearch(query: String) bound to "../src/lib/services/booking.ts"
-    invariant SearchResultsIncludeVerifiedDropShopsOnly bound to "../src/lib/services/booking.ts"
-    invariant SearchRadiusMustBeWithinServiceArea bound to "../src/lib/services/booking.ts"
+    command findDropShop(query: SimpleQuery) bound to "../src/lib/services/booking.ts" symbol "findDropShop"
+    command findDropShopsNear(postcode: String, radiusKm: Int, claim: String) bound to "../src/lib/services/booking.ts" symbol "findDropShopsNear"
+    command addressSearch(query: String) bound to "../src/lib/services/booking.ts" symbol "addressSearch"
+    invariant SearchResultsIncludeVerifiedDropShopsOnly bound to "../src/lib/services/booking.ts" symbol "assertSearchResultsIncludeVerifiedDropShopsOnly"
+    invariant SearchRadiusMustBeWithinServiceArea bound to "../src/lib/services/booking.ts" symbol "assertSearchRadiusMustBeWithinServiceArea"
   }
 }
 
@@ -131,7 +131,7 @@ context PaymentsAndFulfillmentContext {
     forbid IntegrationContext
   }
 
-  aggregate PaymentReference bound to "../prisma/schema.prisma" {
+  aggregate PaymentReference bound to "../prisma/schema.prisma" symbol "PaymentReference" {
     paymentReferenceId: String
     stripeSession: String
     amountMinor: Int
@@ -140,13 +140,13 @@ context PaymentsAndFulfillmentContext {
     paidAt: Timestamp
     dropId: String
     customerClaim: String
-    command createCheckoutSession(dropId: String, claim: String) bound to "../src/routes/dropshop/pay/webhook.ts"
-    command processStripeWebhook() bound to "../src/routes/dropshop/pay/webhook.ts"
-    command reconcilePaymentReference(paymentReferenceId: String) bound to "../src/routes/dropshop/pay/webhook.ts"
-    invariant PaidCheckoutCreatesPaymentReference bound to "../src/routes/dropshop/pay/webhook.ts"
-    invariant SuccessfulPaymentActivatesDropAndDispatchAddressee bound to "../src/routes/dropshop/pay/webhook.ts"
-    invariant WebhookEventsAreIdempotentPerStripeEventId bound to "../src/routes/dropshop/pay/webhook.ts"
-    invariant CapturedPaymentsMustReferenceExistingDrop bound to "../src/routes/dropshop/pay/webhook.ts"
+    command createCheckoutSession(dropId: String, claim: String) bound to "../src/routes/dropshop/pay/webhook.ts" symbol "createCheckoutSession"
+    command processStripeWebhook() bound to "../src/routes/dropshop/pay/webhook.ts" symbol "processStripeWebhook"
+    command reconcilePaymentReference(paymentReferenceId: String) bound to "../src/routes/dropshop/pay/webhook.ts" symbol "reconcilePaymentReference"
+    invariant PaidCheckoutCreatesPaymentReference bound to "../src/routes/dropshop/pay/webhook.ts" symbol "assertPaidCheckoutCreatesPaymentReference"
+    invariant SuccessfulPaymentActivatesDropAndDispatchAddressee bound to "../src/routes/dropshop/pay/webhook.ts" symbol "assertSuccessfulPaymentActivatesDropAndDispatchAddressee"
+    invariant WebhookEventsAreIdempotentPerStripeEventId bound to "../src/routes/dropshop/pay/webhook.ts" symbol "assertWebhookEventsAreIdempotentPerStripeEventId"
+    invariant CapturedPaymentsMustReferenceExistingDrop bound to "../src/routes/dropshop/pay/webhook.ts" symbol "assertCapturedPaymentsMustReferenceExistingDrop"
   }
 }
 
@@ -163,29 +163,29 @@ context IntegrationContext {
     forbid BookingLifecycleContext
   }
 
-  aggregate NotificationOutbox bound to "../prisma/schema.prisma" {
+  aggregate NotificationOutbox bound to "../prisma/schema.prisma" symbol "NotificationOutbox" {
     emailOutboxId: String
     subject: String
     recipient: String
     templateKey: String
     attempts: Int
     lastAttemptAt: Timestamp
-    command sendEmail(email: Email) bound to "../src/lib/services/notifications.ts"
-    command sendSnailMail(mail: Mail) bound to "../src/lib/services/notifications.ts"
-    command scheduleBookingStatusEmail(dropId: String, recipient: String) bound to "../src/lib/services/notifications.ts"
-    command markEmailDispatched(emailOutboxId: String) bound to "../src/lib/services/notifications.ts"
-    invariant EmailIsPersistedToOutboxBeforeWorkerDispatch bound to "../src/lib/services/notifications.ts"
-    invariant OutboxRetriesAreCappedBeforeEscalation bound to "../src/lib/services/notifications.ts"
+    command sendEmail(email: Email) bound to "../src/lib/services/notifications.ts" symbol "sendEmail"
+    command sendSnailMail(mail: Mail) bound to "../src/lib/services/notifications.ts" symbol "sendSnailMail"
+    command scheduleBookingStatusEmail(dropId: String, recipient: String) bound to "../src/lib/services/notifications.ts" symbol "scheduleBookingStatusEmail"
+    command markEmailDispatched(emailOutboxId: String) bound to "../src/lib/services/notifications.ts" symbol "markEmailDispatched"
+    invariant EmailIsPersistedToOutboxBeforeWorkerDispatch bound to "../src/lib/services/notifications.ts" symbol "assertEmailIsPersistedToOutboxBeforeWorkerDispatch"
+    invariant OutboxRetriesAreCappedBeforeEscalation bound to "../src/lib/services/notifications.ts" symbol "assertOutboxRetriesAreCappedBeforeEscalation"
   }
 
-  aggregate RpcGateway bound to "../src/lib/rpc.ts" {
+  aggregate RpcGateway bound to "../src/lib/rpc.ts" symbol "RpcGateway" {
     method: String
     serviceName: String
     serviceVersion: String
-    command registerService(implementation: ServiceImplementation) bound to "../src/lib/rpc.ts"
-    command dispatchRpcRequest(request: JsonRpcRequest) bound to "../src/lib/rpc.ts"
-    command dispatchRpcNotification(request: JsonRpcRequest) bound to "../src/lib/rpc.ts"
-    invariant WrappedServicesReceiveUserPrincipleWhenPresent bound to "../src/lib/rpc.ts"
-    invariant RpcMethodsRequireRegisteredServiceTarget bound to "../src/lib/rpc.ts"
+    command registerService(implementation: ServiceImplementation) bound to "../src/lib/rpc.ts" symbol "registerService"
+    command dispatchRpcRequest(request: JsonRpcRequest) bound to "../src/lib/rpc.ts" symbol "dispatchRpcRequest"
+    command dispatchRpcNotification(request: JsonRpcRequest) bound to "../src/lib/rpc.ts" symbol "dispatchRpcNotification"
+    invariant WrappedServicesReceiveUserPrincipleWhenPresent bound to "../src/lib/rpc.ts" symbol "assertWrappedServicesReceiveUserPrincipleWhenPresent"
+    invariant RpcMethodsRequireRegisteredServiceTarget bound to "../src/lib/rpc.ts" symbol "assertRpcMethodsRequireRegisteredServiceTarget"
   }
 }

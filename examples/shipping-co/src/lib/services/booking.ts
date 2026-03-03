@@ -39,6 +39,12 @@ export interface DropShopSearchResult {
   distanceKm?: number;
 }
 
+export interface DropShopSearch {
+  query: string;
+  region: string;
+  radiusKm: number;
+}
+
 // ── Drop Commands ────────────────────────────────────────────────────────────
 
 export async function createDrop(request: DropShopBookingRequest): Promise<Drop> {
