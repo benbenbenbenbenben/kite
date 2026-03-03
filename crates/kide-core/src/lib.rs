@@ -611,6 +611,202 @@ pub fn completions_at(
     Ok(Vec::new())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenameEdit {
+    pub span: ViolationSpan,
+    pub old_text: String,
+}
+
+pub fn rename_at(
+    source: &str,
+    line: u32,
+    column: u32,
+) -> Result<Option<(String, Vec<RenameEdit>)>> {
+    let ast = kide_parser::parse(source)?;
+    let line = line as usize + 1;
+    let column = column as usize + 1;
+
+    // Check if cursor is on a context name
+    for context in &ast.contexts {
+        let name_span = span_from_position(&context.name.position);
+        if position_in_span(line, column, &name_span) {
+            let context_name = &context.name.text;
+            let mut edits = vec![RenameEdit {
+                span: name_span,
+                old_text: context_name.clone(),
+            }];
+
+            // Find all references to this context name in boundary forbid entries
+            for other_context in &ast.contexts {
+                for element in &other_context.elements {
+                    if let ContextElement::Boundary(boundary) = element {
+                        for entry in &boundary.entries {
+                            if entry.context.text == *context_name {
+                                edits.push(RenameEdit {
+                                    span: span_from_position(&entry.context.position),
+                                    old_text: context_name.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            return Ok(Some((context_name.clone(), edits)));
+        }
+    }
+
+    // Check aggregate, command, and invariant names
+    for context in &ast.contexts {
+        for element in &context.elements {
+            let ContextElement::Aggregate(agg) = element else {
+                continue;
+            };
+
+            let agg_span = span_from_position(&agg.name.position);
+            if position_in_span(line, column, &agg_span) {
+                return Ok(Some((
+                    agg.name.text.clone(),
+                    vec![RenameEdit {
+                        span: agg_span,
+                        old_text: agg.name.text.clone(),
+                    }],
+                )));
+            }
+
+            for member in &agg.members {
+                match member {
+                    AggregateMember::Command(cmd) => {
+                        let cmd_span = span_from_position(&cmd.name.position);
+                        if position_in_span(line, column, &cmd_span) {
+                            return Ok(Some((
+                                cmd.name.text.clone(),
+                                vec![RenameEdit {
+                                    span: cmd_span,
+                                    old_text: cmd.name.text.clone(),
+                                }],
+                            )));
+                        }
+                    }
+                    AggregateMember::Invariant(inv) => {
+                        let inv_span = span_from_position(&inv.name.position);
+                        if position_in_span(line, column, &inv_span) {
+                            return Ok(Some((
+                                inv.name.text.clone(),
+                                vec![RenameEdit {
+                                    span: inv_span,
+                                    old_text: inv.name.text.clone(),
+                                }],
+                            )));
+                        }
+                    }
+                    AggregateMember::Field(_) => {}
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SemanticTokenKind {
+    Namespace, // context names
+    Class,     // aggregate names
+    Function,  // command names
+    Event,     // invariant names
+    Property,  // field names
+    Type,      // type references
+    String,    // string literals
+    Keyword,   // keywords (context, aggregate, command, etc.)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SemanticToken {
+    pub line: u32,
+    pub start_char: u32,
+    pub length: u32,
+    pub kind: SemanticTokenKind,
+}
+
+pub fn semantic_tokens(source: &str) -> Result<Vec<SemanticToken>> {
+    let ast = kide_parser::parse(source)?;
+    let mut tokens = Vec::new();
+
+    for context in &ast.contexts {
+        push_spanned_token(
+            &mut tokens,
+            &context.name.position,
+            SemanticTokenKind::Namespace,
+        );
+
+        for element in &context.elements {
+            match element {
+                ContextElement::Aggregate(agg) => {
+                    push_spanned_token(&mut tokens, &agg.name.position, SemanticTokenKind::Class);
+
+                    for member in &agg.members {
+                        match member {
+                            AggregateMember::Command(cmd) => {
+                                push_spanned_token(
+                                    &mut tokens,
+                                    &cmd.name.position,
+                                    SemanticTokenKind::Function,
+                                );
+                            }
+                            AggregateMember::Invariant(inv) => {
+                                push_spanned_token(
+                                    &mut tokens,
+                                    &inv.name.position,
+                                    SemanticTokenKind::Event,
+                                );
+                            }
+                            AggregateMember::Field(_) => {}
+                        }
+                    }
+                }
+                ContextElement::Dictionary(dict) => {
+                    for entry in &dict.entries {
+                        push_spanned_token(
+                            &mut tokens,
+                            &entry.key.position,
+                            SemanticTokenKind::String,
+                        );
+                    }
+                }
+                ContextElement::Boundary(boundary) => {
+                    for entry in &boundary.entries {
+                        push_spanned_token(
+                            &mut tokens,
+                            &entry.context.position,
+                            SemanticTokenKind::Namespace,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    tokens.sort_by_key(|t| (t.line, t.start_char));
+    Ok(tokens)
+}
+
+fn push_spanned_token(
+    tokens: &mut Vec<SemanticToken>,
+    position: &rust_sitter::Position,
+    kind: SemanticTokenKind,
+) {
+    let span = span_from_position(position);
+    if span.start_line == span.end_line {
+        tokens.push(SemanticToken {
+            line: (span.start_line - 1) as u32,
+            start_char: (span.start_column - 1) as u32,
+            length: (span.end_column - span.start_column) as u32,
+            kind,
+        });
+    }
+}
+
 fn validate_program(
     program: &kide_parser::Program,
     base_dir: &Path,

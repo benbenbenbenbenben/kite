@@ -10,9 +10,12 @@ use tower_lsp::lsp_types::{
     DocumentChangeOperation, DocumentChanges, DocumentSymbol, DocumentSymbolParams,
     DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
-    MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, Position,
-    PublishDiagnosticsParams, Range, ResourceOp, ServerCapabilities, SymbolKind,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, Position, PrepareRenameResponse,
+    PublishDiagnosticsParams, Range, ResourceOp, SemanticToken as LspSemanticToken,
+    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{jsonrpc, Client, LanguageServer, LspService, Server};
 
@@ -99,6 +102,31 @@ impl LanguageServer for Backend {
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(tower_lsp::lsp_types::CompletionOptions::default()),
+                rename_provider: Some(OneOf::Right(tower_lsp::lsp_types::RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: vec![
+                                    SemanticTokenType::NAMESPACE, // 0: context
+                                    SemanticTokenType::CLASS,     // 1: aggregate
+                                    SemanticTokenType::FUNCTION,  // 2: command
+                                    SemanticTokenType::EVENT,     // 3: invariant
+                                    SemanticTokenType::PROPERTY,  // 4: field
+                                    SemanticTokenType::TYPE,      // 5: type
+                                    SemanticTokenType::STRING,    // 6: string
+                                    SemanticTokenType::KEYWORD,   // 7: keyword
+                                ],
+                                token_modifiers: vec![],
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            ..SemanticTokensOptions::default()
+                        },
+                    ),
+                ),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -280,6 +308,129 @@ impl LanguageServer for Backend {
             .collect();
 
         Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: tower_lsp::lsp_types::TextDocumentPositionParams,
+    ) -> jsonrpc::Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let position = params.position;
+
+        let Some(source) = self.source_for_uri(&uri) else {
+            return Ok(None);
+        };
+
+        let rename_info = kide_core::rename_at(&source, position.line, position.character)
+            .ok()
+            .flatten();
+
+        let Some((old_name, edits)) = rename_info else {
+            return Ok(None);
+        };
+
+        if let Some(first) = edits.first() {
+            let range = range_from_span(first.span);
+            Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
+                range,
+                placeholder: old_name,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn rename(
+        &self,
+        params: tower_lsp::lsp_types::RenameParams,
+    ) -> jsonrpc::Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+
+        let Some(source) = self.source_for_uri(&uri) else {
+            return Ok(None);
+        };
+
+        let rename_info = kide_core::rename_at(&source, position.line, position.character)
+            .ok()
+            .flatten();
+
+        let Some((_old_name, edits)) = rename_info else {
+            return Ok(None);
+        };
+
+        let text_edits: Vec<TextEdit> = edits
+            .into_iter()
+            .map(|edit| TextEdit {
+                range: range_from_span(edit.span),
+                new_text: new_name.clone(),
+            })
+            .collect();
+
+        let mut changes = std::collections::HashMap::new();
+        changes.insert(uri, text_edits);
+
+        Ok(Some(WorkspaceEdit {
+            changes: Some(changes),
+            ..WorkspaceEdit::default()
+        }))
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> jsonrpc::Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+        let Some(source) = self.source_for_uri(&uri) else {
+            return Ok(None);
+        };
+
+        let tokens = kide_core::semantic_tokens(&source).ok().unwrap_or_default();
+        if tokens.is_empty() {
+            return Ok(None);
+        }
+
+        // Encode as LSP delta tokens (each relative to previous)
+        let mut lsp_tokens = Vec::with_capacity(tokens.len());
+        let mut prev_line = 0u32;
+        let mut prev_start = 0u32;
+
+        for token in &tokens {
+            let delta_line = token.line - prev_line;
+            let delta_start = if delta_line == 0 {
+                token.start_char - prev_start
+            } else {
+                token.start_char
+            };
+
+            let token_type = match token.kind {
+                kide_core::SemanticTokenKind::Namespace => 0,
+                kide_core::SemanticTokenKind::Class => 1,
+                kide_core::SemanticTokenKind::Function => 2,
+                kide_core::SemanticTokenKind::Event => 3,
+                kide_core::SemanticTokenKind::Property => 4,
+                kide_core::SemanticTokenKind::Type => 5,
+                kide_core::SemanticTokenKind::String => 6,
+                kide_core::SemanticTokenKind::Keyword => 7,
+            };
+
+            lsp_tokens.push(LspSemanticToken {
+                delta_line,
+                delta_start,
+                length: token.length,
+                token_type,
+                token_modifiers_bitset: 0,
+            });
+
+            prev_line = token.line;
+            prev_start = token.start_char;
+        }
+
+        Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
+            result_id: None,
+            data: lsp_tokens,
+        })))
     }
 }
 
