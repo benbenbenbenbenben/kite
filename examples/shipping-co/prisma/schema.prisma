@@ -1,0 +1,101 @@
+// ── Prisma Schema for Shipping-Co ────────────────────────────────────────────
+//
+// Data models for DropShop, Drop, PaymentReference, and NotificationOutbox.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Onboarding ───────────────────────────────────────────────────────────────
+
+model DropShop {
+  dropShopId       String   @id @default(uuid())
+  displayName      String
+  legalName        String
+  contactEmail     String
+  isVerified       Boolean  @default(false)
+  verificationCode String?
+  verificationExpiresAt DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  admins           DropShopMember[] @relation("AdminRelation")
+  users            DropShopMember[] @relation("UserRelation")
+  drops            Drop[]
+
+  @@index([contactEmail])
+}
+
+model DropShopMember {
+  id          String   @id @default(uuid())
+  userId      String
+  role        String   // "admin" | "user"
+  dropShopId  String
+
+  adminOf     DropShop? @relation("AdminRelation", fields: [dropShopId], references: [dropShopId])
+  userOf      DropShop? @relation("UserRelation", fields: [dropShopId], references: [dropShopId])
+
+  @@unique([userId, dropShopId, role])
+}
+
+// ── Booking ──────────────────────────────────────────────────────────────────
+
+model Drop {
+  dropId            String   @id @default(uuid())
+  status            String   @default("created") // created | dispatched | arrived | collected | cancelled | transferred
+  customerReference String
+  addresseeName     String
+  addresseeEmail    String
+  createdAt         DateTime @default(now())
+  dispatchedAt      DateTime?
+  arrivedAt         DateTime?
+  collectedAt       DateTime?
+
+  dropShopId        String
+  dropShop          DropShop @relation(fields: [dropShopId], references: [dropShopId])
+
+  paymentReference  PaymentReference?
+
+  @@index([dropShopId])
+  @@index([addresseeEmail])
+  @@index([status])
+}
+
+// ── Payments ─────────────────────────────────────────────────────────────────
+
+model PaymentReference {
+  paymentReferenceId String   @id @default(uuid())
+  stripeSession      String   @unique
+  amountMinor        Int
+  currency           String   @default("GBP")
+  paymentStatus      String   @default("pending") // pending | paid | failed | refunded
+  paidAt             DateTime?
+
+  dropId             String   @unique
+  drop               Drop     @relation(fields: [dropId], references: [dropId])
+
+  customerClaim      String
+
+  @@index([paymentStatus])
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+model NotificationOutbox {
+  emailOutboxId String   @id @default(uuid())
+  subject       String
+  recipient     String
+  templateKey   String
+  attempts      Int      @default(0)
+  lastAttemptAt DateTime?
+  dispatched    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([dispatched, attempts])
+  @@index([recipient])
+}
