@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-    CodeActionProviderCapability, CodeActionResponse, CodeDescription, CreateFile,
-    CreateFileOptions, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentChangeOperation, DocumentChanges, DocumentSymbol,
-    DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    Location, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, Position,
+    CodeActionProviderCapability, CodeActionResponse, CodeDescription, CompletionItem,
+    CompletionItemKind, CompletionParams, CompletionResponse, CreateFile, CreateFileOptions,
+    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
+    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentChangeOperation, DocumentChanges, DocumentSymbol, DocumentSymbolParams,
+    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
+    MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, Position,
     PublishDiagnosticsParams, Range, ResourceOp, ServerCapabilities, SymbolKind,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
@@ -97,6 +98,7 @@ impl LanguageServer for Backend {
                 document_symbol_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                completion_provider: Some(tower_lsp::lsp_types::CompletionOptions::default()),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -231,6 +233,53 @@ impl LanguageServer for Backend {
             }),
             range: Some(range_from_span(info.span)),
         }))
+    }
+
+    async fn completion(
+        &self,
+        params: CompletionParams,
+    ) -> jsonrpc::Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        let Some(source) = self.source_for_uri(&uri) else {
+            return Ok(None);
+        };
+
+        let base_dir = uri
+            .to_file_path()
+            .ok()
+            .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let completions =
+            kide_core::completions_at(&source, &base_dir, position.line, position.character)
+                .ok()
+                .unwrap_or_default();
+
+        if completions.is_empty() {
+            return Ok(None);
+        }
+
+        let items: Vec<CompletionItem> = completions
+            .into_iter()
+            .map(|c| {
+                let kind = match c.kind {
+                    kide_core::CompletionKind::Context => Some(CompletionItemKind::MODULE),
+                    kide_core::CompletionKind::Keyword => Some(CompletionItemKind::KEYWORD),
+                    kide_core::CompletionKind::Type => Some(CompletionItemKind::CLASS),
+                    kide_core::CompletionKind::Symbol => Some(CompletionItemKind::FUNCTION),
+                };
+                CompletionItem {
+                    label: c.label,
+                    kind,
+                    detail: c.detail,
+                    ..CompletionItem::default()
+                }
+            })
+            .collect();
+
+        Ok(Some(CompletionResponse::Array(items)))
     }
 }
 

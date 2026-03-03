@@ -185,6 +185,35 @@ impl<'a> AdapterRuntimeEngine<'a> {
             self.js_bridge_call("boundary_references", target_path, source, None, None)
         }
     }
+
+    pub fn list_symbols(
+        &self,
+        language: &str,
+        target_path: &Path,
+        source: &str,
+        query: &str,
+    ) -> Result<Vec<String>> {
+        let is_tsx = is_tsx_path(target_path);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let symbols = wasm_adapter::captured_symbols(
+                self.grammar_registry,
+                language,
+                is_tsx,
+                source,
+                query,
+            )?;
+            Ok(symbols.unwrap_or_default())
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let symbols: Option<Vec<String>> =
+                self.js_bridge_call("list_symbols", target_path, source, None, Some(query))?;
+            Ok(symbols.unwrap_or_default())
+        }
+    }
 }
 
 // JS bridge support for wasm32 targets

@@ -444,6 +444,173 @@ pub fn hover_at(
     Ok(None)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompletionKind {
+    Context,
+    Keyword,
+    Type,
+    Symbol,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionItem {
+    pub label: String,
+    pub kind: CompletionKind,
+    pub detail: Option<String>,
+}
+
+pub fn completions_at(
+    source: &str,
+    base_dir: &Path,
+    line: u32,
+    column: u32,
+) -> Result<Vec<CompletionItem>> {
+    let line_idx = line as usize;
+    let col_idx = column as usize;
+
+    // Get text up to cursor position
+    let lines: Vec<&str> = source.lines().collect();
+    if line_idx >= lines.len() {
+        return Ok(Vec::new());
+    }
+    let current_line = lines[line_idx];
+    let prefix = if col_idx <= current_line.len() {
+        &current_line[..col_idx]
+    } else {
+        current_line
+    };
+    let trimmed = prefix.trim();
+
+    // After "forbid " → suggest context names from this file
+    if trimmed.starts_with("forbid") {
+        let ast = kide_parser::parse(source).ok();
+        let mut context_names: Vec<String> = ast
+            .iter()
+            .flat_map(|a| a.contexts.iter())
+            .map(|c| c.name.text.clone())
+            .collect();
+        context_names.sort();
+        context_names.dedup();
+        return Ok(context_names
+            .into_iter()
+            .map(|name| CompletionItem {
+                label: name,
+                kind: CompletionKind::Context,
+                detail: Some("context".to_string()),
+            })
+            .collect());
+    }
+
+    // After "symbol " → suggest exported symbols from the bound file on this line
+    if trimmed.contains("symbol") && !trimmed.contains("symbol \"") {
+        // Find the "bound to" path on this line
+        if let Some(path_start) = current_line.find("bound to \"") {
+            let after = &current_line[path_start + 10..];
+            if let Some(path_end) = after.find('"') {
+                let bound_path = &after[..path_end];
+                let target_path = resolve_bound_path(base_dir, bound_path);
+                if target_path.exists() {
+                    let grammar_root = resolve_grammar_root(base_dir)?;
+                    let grammar_registry = GrammarRegistry::load(&grammar_root)?;
+                    let adapter_runtime = AdapterRuntimeEngine::new(&grammar_registry, base_dir);
+                    if let Some(language) = adapter_runtime.language_for_path(&target_path) {
+                        if let Some(query) =
+                            grammar_registry.query_for(&language, "symbol_exists")?
+                        {
+                            let target_source = std::fs::read_to_string(&target_path)?;
+                            let symbols = adapter_runtime.list_symbols(
+                                &language,
+                                &target_path,
+                                &target_source,
+                                &query,
+                            )?;
+                            return Ok(symbols
+                                .into_iter()
+                                .map(|s| CompletionItem {
+                                    label: format!("\"{}\"", s),
+                                    kind: CompletionKind::Symbol,
+                                    detail: Some(format!("{} symbol", language)),
+                                })
+                                .collect());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // After ":" in a field or parameter → suggest types
+    if trimmed.ends_with(':')
+        || (trimmed.contains(':') && !trimmed.contains("=>") && !trimmed.contains("bound"))
+    {
+        let primitives = [
+            "String",
+            "Int",
+            "Decimal",
+            "Boolean",
+            "Date",
+            "Timestamp",
+            "Void",
+        ];
+        return Ok(primitives
+            .iter()
+            .map(|t| CompletionItem {
+                label: t.to_string(),
+                kind: CompletionKind::Type,
+                detail: Some("primitive type".to_string()),
+            })
+            .collect());
+    }
+
+    // At top level or empty line → suggest keywords
+    if trimmed.is_empty() || trimmed == "c" || trimmed == "co" || trimmed == "con" {
+        return Ok(vec![
+            CompletionItem {
+                label: "context".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("bounded context".to_string()),
+            },
+            CompletionItem {
+                label: "aggregate".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("aggregate root".to_string()),
+            },
+            CompletionItem {
+                label: "command".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("domain command".to_string()),
+            },
+            CompletionItem {
+                label: "invariant".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("business rule".to_string()),
+            },
+            CompletionItem {
+                label: "dictionary".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("ubiquitous language".to_string()),
+            },
+            CompletionItem {
+                label: "boundary".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("context boundary".to_string()),
+            },
+            CompletionItem {
+                label: "bound to".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("file binding".to_string()),
+            },
+            CompletionItem {
+                label: "forbidden".to_string(),
+                kind: CompletionKind::Keyword,
+                detail: Some("dictionary: term is banned".to_string()),
+            },
+        ]);
+    }
+
+    Ok(Vec::new())
+}
+
 fn validate_program(
     program: &kide_parser::Program,
     base_dir: &Path,

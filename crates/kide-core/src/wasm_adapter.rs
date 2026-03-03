@@ -200,7 +200,7 @@ pub fn boundary_references(
     Ok(Some(references))
 }
 
-fn captured_symbols(
+pub fn captured_symbols(
     registry: &GrammarRegistry,
     language: &str,
     is_tsx: bool,
