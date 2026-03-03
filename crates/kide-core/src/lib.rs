@@ -70,6 +70,9 @@ pub const DOCS_BINDING_HASH_MISMATCH: &str =
 pub const DOCS_BINDING_FILE_EMPTY: &str = "https://docs.kide.dev/diagnostics/binding-file-empty";
 pub const DOCS_BINDING_SYMBOL_MISSING: &str =
     "https://docs.kide.dev/diagnostics/binding-symbol-missing";
+pub const CODE_AGGREGATE_SHARED_BINDING: &str = "AGGREGATE_SHARED_BINDING";
+pub const DOCS_AGGREGATE_SHARED_BINDING: &str =
+    "https://docs.kide.dev/diagnostics/aggregate-shared-binding";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViolationSeverity {
@@ -827,6 +830,10 @@ fn validate_program(
             &mut violations,
         )?;
     }
+
+    // Cross-context: shared kernel detection
+    detect_shared_bindings(program, base_dir, &mut violations);
+
     Ok(violations)
 }
 
@@ -864,6 +871,69 @@ fn bindings_in_context(context: &DomainContext) -> Vec<&Binding> {
         }
     }
     bindings
+}
+
+fn detect_shared_bindings(
+    program: &kide_parser::Program,
+    base_dir: &Path,
+    violations: &mut Vec<Violation>,
+) {
+    // Collect (resolved_path, context_name, aggregate_name, span) for all aggregate bindings
+    let mut binding_map: std::collections::HashMap<PathBuf, Vec<(String, String, ViolationSpan)>> =
+        std::collections::HashMap::new();
+
+    for context in &program.contexts {
+        for element in &context.elements {
+            let ContextElement::Aggregate(agg) = element else {
+                continue;
+            };
+            if let Some(binding) = &agg.binding {
+                let raw_path = binding.target.text.trim_matches('"');
+                let resolved = resolve_bound_path(base_dir, raw_path);
+                let span = span_from_position(&agg.name.position);
+                binding_map.entry(resolved).or_default().push((
+                    context.name.text.clone(),
+                    agg.name.text.clone(),
+                    span,
+                ));
+            }
+        }
+    }
+
+    for (path, entries) in &binding_map {
+        if entries.len() < 2 {
+            continue;
+        }
+        // Check if entries span multiple contexts
+        let contexts: BTreeSet<&str> = entries.iter().map(|(c, _, _)| c.as_str()).collect();
+        if contexts.len() < 2 {
+            continue;
+        }
+        let context_list: Vec<&str> = contexts.into_iter().collect();
+        for (ctx, agg, span) in entries {
+            let others: Vec<&str> = context_list
+                .iter()
+                .filter(|c| **c != ctx.as_str())
+                .copied()
+                .collect();
+            violations.push(Violation {
+                severity: ViolationSeverity::Warning,
+                code: CODE_AGGREGATE_SHARED_BINDING,
+                message: format!(
+                    "aggregate '{}' in context '{}' binds to '{}' which is also bound in context(s) {}",
+                    agg,
+                    ctx,
+                    path.display(),
+                    others.join(", ")
+                ),
+                hint: Some(
+                    "shared bindings across contexts may indicate a shared kernel; consider extracting a shared context".to_string(),
+                ),
+                docs_uri: Some(DOCS_AGGREGATE_SHARED_BINDING),
+                span: Some(*span),
+            });
+        }
+    }
 }
 
 struct BoundSource {
