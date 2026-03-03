@@ -18,7 +18,7 @@
 
 ## LSP
 
-- [ ] Hover support: show aggregate/command/invariant docs on hover
+- [x] Hover support: show aggregate/command/invariant docs on hover
 - [ ] Completion: suggest context names in `forbid`, symbol names from bound files
 - [ ] Rename: rename a command/invariant across the `.kide` file
 - [ ] Semantic tokens: richer highlighting via LSP (complement TextMate grammar)
@@ -34,9 +34,9 @@
 ## Example: shipping-co
 
 - [ ] Make dictionary terms actually trigger in bound sources (add realistic violations)
-- [ ] Add `hash` clauses to lock down critical service files
+- [x] Add `hash` clauses to lock down critical service files
 - [ ] Add a second `.kide` file (e.g. `infra.kide`) to test multi-file workflows
-- [ ] Add integration test that runs `kide check` on shipping-co as a regression gate
+- [x] Add integration test that runs `kide check` on shipping-co as a regression gate
 
 ## Tooling & CI
 
