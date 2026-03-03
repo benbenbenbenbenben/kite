@@ -1,6 +1,7 @@
 mod adapter_runtime;
 mod formatter;
 mod grammar_registry;
+mod scaffolder;
 mod wasm_adapter;
 
 use adapter_runtime::AdapterRuntimeEngine;
@@ -12,6 +13,7 @@ use kide_parser::grammar::{
     Command, Context as DomainContext, ContextElement, DictEntry, DictValue, Dictionary, Invariant,
     PrimitiveType, RuleBody, TypeRef,
 };
+pub use scaffolder::scaffold;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeSet, HashSet},

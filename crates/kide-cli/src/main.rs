@@ -27,6 +27,15 @@ enum Commands {
         #[arg(long)]
         write: bool,
     },
+    /// Scaffold a .kide domain file from an existing codebase.
+    Init {
+        /// Source directory to scan for code files
+        #[arg(default_value = "src")]
+        source: PathBuf,
+        /// Output .kide file path
+        #[arg(short, long, default_value = "domain/main.kide")]
+        output: PathBuf,
+    },
     /// Start the integrated Language Server Protocol endpoint over stdio.
     StartLsp,
 }
@@ -66,6 +75,19 @@ fn main() -> Result<()> {
             } else {
                 print!("{}", formatted);
             }
+        }
+        Commands::Init { source, output } => {
+            let output_dir = output.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let scaffold = kide_core::scaffold(&source, output_dir)?;
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&output, &scaffold)?;
+            println!(
+                "✨ Scaffolded {} from {}",
+                output.display(),
+                source.display()
+            );
         }
         Commands::StartLsp => run_lsp()?,
     }
