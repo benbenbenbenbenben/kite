@@ -1,0 +1,38 @@
+// Infrastructure domain - separate from the main domain model
+// Tests multi-file kide workflows
+
+context ObservabilityContext {
+  dictionary {
+    "Log" => "AuditEntry"
+    "Alert" => "HealthNotification"
+    "Metric" => forbidden
+  }
+
+  aggregate AuditTrail bound to "../src/lib/infra/audit.ts" symbol "AuditTrail" {
+    entityId: String
+    action: String
+    actorId: String
+    recordedAt: Timestamp
+    command recordAuditEntry(entityId: String, action: String, actorId: String) bound to "../src/lib/infra/audit.ts" symbol "recordAuditEntry"
+    command queryAuditLog(entityId: String) bound to "../src/lib/infra/audit.ts" symbol "queryAuditLog"
+    invariant AuditEntriesAreImmutable bound to "../src/lib/infra/audit.ts" symbol "assertAuditEntriesAreImmutable"
+  }
+}
+
+context FeatureFlagContext {
+  dictionary {
+    "Toggle" => "FeatureFlag"
+    "Switch" => "FeatureFlag"
+  }
+
+  aggregate FeatureFlag bound to "../src/lib/infra/feature_flags.ts" symbol "FeatureFlag" {
+    flagKey: String
+    enabled: Boolean
+    rolloutPercentage: Int
+    command evaluateFlag(flagKey: String, userId: String) bound to "../src/lib/infra/feature_flags.ts" symbol "evaluateFlag"
+    command setFlagState(flagKey: String, enabled: Boolean) bound to "../src/lib/infra/feature_flags.ts" symbol "setFlagState"
+    command setRolloutPercentage(flagKey: String, percentage: Int) bound to "../src/lib/infra/feature_flags.ts" symbol "setRolloutPercentage"
+    invariant RolloutPercentageMustBeWithinBounds bound to "../src/lib/infra/feature_flags.ts" symbol "assertRolloutPercentageMustBeWithinBounds"
+    invariant DisabledFlagsAlwaysEvaluateFalse bound to "../src/lib/infra/feature_flags.ts" symbol "assertDisabledFlagsAlwaysEvaluateFalse"
+  }
+}
