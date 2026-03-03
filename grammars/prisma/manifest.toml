@@ -6,3 +6,11 @@ display_name = "Prisma"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (column_type)
+  (identifier)
+] @reference
+"""
