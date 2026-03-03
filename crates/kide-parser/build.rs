@@ -3,10 +3,26 @@ fn main() {
     rust_sitter_tool::build_parser("src/grammar/mod.rs");
 
     // Generate TextMate grammar from the same source of truth.
-    let textmate = rust_sitter_tool::TextMateBuilder::default()
+    let mut textmate = rust_sitter_tool::TextMateBuilder::default()
         .scope_name("kide")
         .build("src/grammar/mod.rs")
         .expect("failed to generate TextMate grammar");
+
+    // Post-process: remove overly greedy catch-all patterns (e.g. `[^{}]+` from
+    // BlockFragment) that would swallow keywords and strings inside blocks.
+    if let Some(repo) = textmate.get_mut("repository") {
+        if let Some(idents) = repo.get_mut("identifiers") {
+            if let Some(patterns) = idents.get_mut("patterns") {
+                if let Some(arr) = patterns.as_array_mut() {
+                    arr.retain(|p| {
+                        p.get("match")
+                            .and_then(|m| m.as_str())
+                            .map_or(true, |m| !m.starts_with("[^"))
+                    });
+                }
+            }
+        }
+    }
 
     let out_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../vscode-kide/syntaxes/kide.tmLanguage.json");
