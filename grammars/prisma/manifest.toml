@@ -1,17 +1,8 @@
 language = "prisma"
 version = "1.6.0"
-grammar_dir = "tree-sitter-prisma-1.6.0"
-
-[adapter]
-wasm_fallback_to_native = true
-
-[adapter.native]
-backend_kind = "wasmtime_wasm"
-module = "kide.adapters.prisma"
-
-[adapter.wasm]
-backend_kind = "js_bridge"
-module = "kide.adapters.prisma"
+wasm_file = "tree-sitter-prisma.wasm"
+extensions = [".prisma"]
+display_name = "Prisma"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"

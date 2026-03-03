@@ -3,11 +3,11 @@
 #[path = "../src/grammar_registry.rs"]
 mod grammar_registry;
 
-use grammar_registry::{AdapterRuntime, GrammarRegistry};
+use grammar_registry::GrammarRegistry;
 use tempfile::TempDir;
 
 #[test]
-fn adapter_config_loads_and_selects_requested_runtime() {
+fn grammar_registry_loads_language_with_wasm_file() {
     let temp_dir = TempDir::new().unwrap();
     let grammar_dir = temp_dir.path().join("rust");
     std::fs::create_dir_all(&grammar_dir).unwrap();
@@ -15,17 +15,10 @@ fn adapter_config_loads_and_selects_requested_runtime() {
         grammar_dir.join("manifest.toml"),
         r#"
 language = "rust"
-
-[adapter]
-wasm_fallback_to_native = true
-
-[adapter.native]
-backend_kind = "wasmtime_wasm"
-module = "kide.adapters.rust.native"
-
-[adapter.wasm]
-backend_kind = "js_bridge"
-module = "kide.adapters.rust.wasm"
+version = "0.24.0"
+wasm_file = "tree-sitter-rust.wasm"
+extensions = [".rs"]
+display_name = "Rust"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
@@ -34,19 +27,12 @@ symbol_exists = "queries/symbol_exists.scm"
     .unwrap();
 
     let registry = GrammarRegistry::load(temp_dir.path()).unwrap();
-    let native = registry
-        .adapter_for("rust", AdapterRuntime::Native)
-        .unwrap();
-    let wasm = registry.adapter_for("rust", AdapterRuntime::Wasm).unwrap();
-
-    assert_eq!(native.backend_kind, "wasmtime_wasm");
-    assert_eq!(native.module, "kide.adapters.rust.native");
-    assert_eq!(wasm.backend_kind, "js_bridge");
-    assert_eq!(wasm.module, "kide.adapters.rust.wasm");
+    assert!(registry.has_language("rust"));
+    assert_eq!(registry.display_name("rust"), "Rust");
 }
 
 #[test]
-fn wasm_runtime_can_fallback_to_native_when_configured() {
+fn grammar_registry_resolves_language_for_path() {
     let temp_dir = TempDir::new().unwrap();
     let grammar_dir = temp_dir.path().join("typescript");
     std::fs::create_dir_all(&grammar_dir).unwrap();
@@ -54,13 +40,10 @@ fn wasm_runtime_can_fallback_to_native_when_configured() {
         grammar_dir.join("manifest.toml"),
         r#"
 language = "typescript"
-
-[adapter]
-wasm_fallback_to_native = true
-
-[adapter.native]
-backend_kind = "wasmtime_wasm"
-module = "kide.adapters.typescript.native"
+wasm_file = "tree-sitter-typescript.wasm"
+tsx_wasm_file = "tree-sitter-tsx.wasm"
+extensions = [".ts", ".tsx"]
+display_name = "TypeScript"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
@@ -69,16 +52,21 @@ symbol_exists = "queries/symbol_exists.scm"
     .unwrap();
 
     let registry = GrammarRegistry::load(temp_dir.path()).unwrap();
-    let wasm = registry
-        .adapter_for("typescript", AdapterRuntime::Wasm)
-        .unwrap();
-
-    assert_eq!(wasm.backend_kind, "wasmtime_wasm");
-    assert_eq!(wasm.module, "kide.adapters.typescript.native");
+    assert_eq!(
+        registry.language_for_path(std::path::Path::new("foo.ts")),
+        Some("typescript")
+    );
+    assert_eq!(
+        registry.language_for_path(std::path::Path::new("foo.tsx")),
+        Some("typescript")
+    );
+    assert!(registry
+        .language_for_path(std::path::Path::new("foo.py"))
+        .is_none());
 }
 
 #[test]
-fn wasm_runtime_returns_none_without_config_or_fallback() {
+fn grammar_registry_unknown_language_returns_none() {
     let temp_dir = TempDir::new().unwrap();
     let grammar_dir = temp_dir.path().join("prisma");
     std::fs::create_dir_all(&grammar_dir).unwrap();
@@ -86,13 +74,9 @@ fn wasm_runtime_returns_none_without_config_or_fallback() {
         grammar_dir.join("manifest.toml"),
         r#"
 language = "prisma"
-
-[adapter]
-wasm_fallback_to_native = false
-
-[adapter.native]
-backend_kind = "wasmtime_wasm"
-module = "kide.adapters.prisma.native"
+wasm_file = "tree-sitter-prisma.wasm"
+extensions = [".prisma"]
+display_name = "Prisma"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
@@ -101,7 +85,39 @@ symbol_exists = "queries/symbol_exists.scm"
     .unwrap();
 
     let registry = GrammarRegistry::load(temp_dir.path()).unwrap();
-    let wasm = registry.adapter_for("prisma", AdapterRuntime::Wasm);
+    assert!(!registry.has_language("python"));
+    assert_eq!(registry.display_name("python"), "bound");
+}
 
-    assert!(wasm.is_none());
+#[test]
+fn grammar_registry_loads_boundary_references_query() {
+    let temp_dir = TempDir::new().unwrap();
+    let grammar_dir = temp_dir.path().join("rust");
+    std::fs::create_dir_all(&grammar_dir).unwrap();
+    std::fs::write(
+        grammar_dir.join("manifest.toml"),
+        r#"
+language = "rust"
+wasm_file = "tree-sitter-rust.wasm"
+extensions = [".rs"]
+
+[queries]
+symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (use_declaration)
+  (call_expression)
+] @reference
+"""
+"#,
+    )
+    .unwrap();
+
+    let registry = GrammarRegistry::load(temp_dir.path()).unwrap();
+    let query = registry.boundary_references_query("rust").unwrap();
+    assert!(query.contains("use_declaration"));
+    assert!(query.contains("@reference"));
+    assert!(registry.boundary_references_query("python").is_none());
 }

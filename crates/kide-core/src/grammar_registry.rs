@@ -3,25 +3,15 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub enum AdapterRuntime {
-    Native,
-    Wasm,
+#[derive(Debug, Clone, Deserialize)]
+pub struct BoundaryReferenceQuery {
+    pub source: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct AdapterRuntimeManifest {
-    pub backend_kind: String,
-    pub module: String,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
-pub struct AdapterManifest {
-    pub native: AdapterRuntimeManifest,
-    pub wasm: Option<AdapterRuntimeManifest>,
-    #[serde(default)]
-    pub wasm_fallback_to_native: bool,
+#[derive(Debug, Clone, Deserialize)]
+pub struct QueriesManifest {
+    pub symbol_exists: Option<String>,
+    pub boundary_references: Option<BoundaryReferenceQuery>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,11 +19,11 @@ pub struct AdapterManifest {
 pub struct GrammarManifest {
     pub language: String,
     pub version: Option<String>,
-    pub grammar_dir: Option<String>,
+    pub wasm_file: Option<String>,
+    pub tsx_wasm_file: Option<String>,
     pub extensions: Option<Vec<String>>,
-    pub queries: HashMap<String, String>,
-    #[serde(default)]
-    pub adapter: Option<AdapterManifest>,
+    pub display_name: Option<String>,
+    pub queries: Option<QueriesManifest>,
 }
 
 #[derive(Debug)]
@@ -85,7 +75,16 @@ impl GrammarRegistry {
             return Ok(None);
         };
 
-        let Some(query_rel_path) = grammar.manifest.queries.get(rule) else {
+        let Some(queries) = &grammar.manifest.queries else {
+            return Ok(None);
+        };
+
+        let query_rel_path = match rule {
+            "symbol_exists" => queries.symbol_exists.as_deref(),
+            _ => None,
+        };
+
+        let Some(query_rel_path) = query_rel_path else {
             return Ok(None);
         };
 
@@ -95,8 +94,51 @@ impl GrammarRegistry {
         Ok(Some(query))
     }
 
+    pub fn boundary_references_query(&self, language: &str) -> Option<String> {
+        let grammar = self.grammars.get(language)?;
+        grammar
+            .manifest
+            .queries
+            .as_ref()?
+            .boundary_references
+            .as_ref()
+            .map(|brq| brq.source.clone())
+    }
+
     pub fn has_language(&self, language: &str) -> bool {
         self.grammars.contains_key(language)
+    }
+
+    pub fn wasm_bytes(&self, language: &str) -> Result<Option<Vec<u8>>> {
+        let Some(grammar) = self.grammars.get(language) else {
+            return Ok(None);
+        };
+        let Some(wasm_file) = &grammar.manifest.wasm_file else {
+            return Ok(None);
+        };
+        let wasm_path = grammar.root.join(wasm_file);
+        if !wasm_path.exists() {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(&wasm_path)
+            .with_context(|| format!("failed to read wasm file {}", wasm_path.display()))?;
+        Ok(Some(bytes))
+    }
+
+    pub fn tsx_wasm_bytes(&self, language: &str) -> Result<Option<Vec<u8>>> {
+        let Some(grammar) = self.grammars.get(language) else {
+            return Ok(None);
+        };
+        let Some(wasm_file) = &grammar.manifest.tsx_wasm_file else {
+            return Ok(None);
+        };
+        let wasm_path = grammar.root.join(wasm_file);
+        if !wasm_path.exists() {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(&wasm_path)
+            .with_context(|| format!("failed to read tsx wasm file {}", wasm_path.display()))?;
+        Ok(Some(bytes))
     }
 
     pub fn language_for_path<'a>(&'a self, path: &Path) -> Option<&'a str> {
@@ -111,38 +153,17 @@ impl GrammarRegistry {
                         .iter()
                         .any(|candidate| candidate.trim_start_matches('.') == extension)
                 });
-            if manifest_match || language_matches_default_extension(language, extension) {
+            if manifest_match {
                 return Some(language.as_str());
             }
         }
         None
     }
 
-    #[allow(dead_code)]
-    pub fn adapter_for(
-        &self,
-        language: &str,
-        runtime: AdapterRuntime,
-    ) -> Option<&AdapterRuntimeManifest> {
-        let adapter = self.grammars.get(language)?.manifest.adapter.as_ref()?;
-        match runtime {
-            AdapterRuntime::Native => Some(&adapter.native),
-            AdapterRuntime::Wasm => adapter.wasm.as_ref().or_else(|| {
-                if adapter.wasm_fallback_to_native {
-                    Some(&adapter.native)
-                } else {
-                    None
-                }
-            }),
-        }
-    }
-}
-
-fn language_matches_default_extension(language: &str, extension: &str) -> bool {
-    match language {
-        "rust" => extension == "rs",
-        "typescript" => extension == "ts" || extension == "tsx",
-        "prisma" => extension == "prisma",
-        _ => false,
+    pub fn display_name(&self, language: &str) -> &str {
+        self.grammars
+            .get(language)
+            .and_then(|g| g.manifest.display_name.as_deref())
+            .unwrap_or("bound")
     }
 }

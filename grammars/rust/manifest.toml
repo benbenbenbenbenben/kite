@@ -1,17 +1,18 @@
 language = "rust"
 version = "0.24.0"
-grammar_dir = "tree-sitter-rust-0.24.0"
-
-[adapter]
-wasm_fallback_to_native = true
-
-[adapter.native]
-backend_kind = "wasmtime_wasm"
-module = "kide.adapters.rust"
-
-[adapter.wasm]
-backend_kind = "js_bridge"
-module = "kide.adapters.rust"
+wasm_file = "tree-sitter-rust.wasm"
+extensions = [".rs"]
+display_name = "Rust"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (use_declaration)
+  (type_identifier)
+  (scoped_identifier)
+  (call_expression)
+] @reference
+"""

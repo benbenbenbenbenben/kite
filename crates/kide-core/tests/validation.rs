@@ -1,11 +1,10 @@
 use kide_core::{
     check_file, definition_at, ViolationSeverity, CODE_BINDING_FILE_NOT_FOUND,
     CODE_BINDING_HASH_INVALID_FORMAT, CODE_BINDING_HASH_MISMATCH, CODE_BINDING_SYMBOL_NOT_FOUND,
-    CODE_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE, CODE_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY,
-    CODE_COMMAND_BINDING_ARITY_MISMATCH, CODE_COMMAND_BINDING_INTENT_SUSPICIOUS,
-    CODE_CONTEXT_BOUNDARY_DUPLICATE_FORBID, CODE_CONTEXT_BOUNDARY_FORBIDDEN,
-    CODE_CONTEXT_BOUNDARY_SELF_FORBID, CODE_DICTIONARY_DUPLICATE_KEY,
-    CODE_DICTIONARY_TERM_FORBIDDEN, CODE_DICTIONARY_TERM_PREFERRED,
+    CODE_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY, CODE_COMMAND_BINDING_ARITY_MISMATCH,
+    CODE_COMMAND_BINDING_INTENT_SUSPICIOUS, CODE_CONTEXT_BOUNDARY_DUPLICATE_FORBID,
+    CODE_CONTEXT_BOUNDARY_FORBIDDEN, CODE_CONTEXT_BOUNDARY_SELF_FORBID,
+    CODE_DICTIONARY_DUPLICATE_KEY, CODE_DICTIONARY_TERM_FORBIDDEN, CODE_DICTIONARY_TERM_PREFERRED,
     DOCS_BINDING_HASH_INVALID_FORMAT, DOCS_BINDING_HASH_MISMATCH, DOCS_BINDING_SYMBOL_NOT_FOUND,
     DOCS_COMMAND_BINDING_ARITY_MISMATCH, DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS,
     DOCS_CONTEXT_BOUNDARY_DUPLICATE_FORBID, DOCS_CONTEXT_BOUNDARY_FORBIDDEN,
@@ -160,15 +159,9 @@ context SalesContext {
 }
 
 #[test]
-fn configured_builtin_adapter_keeps_runtime_symbol_resolution() {
+fn grammar_with_wasm_file_resolves_symbol() {
     let temp_dir = TempDir::new().unwrap();
-    create_rust_grammar_with_adapter(
-        temp_dir.path(),
-        r#"[adapter.native]
-backend_kind = "builtin"
-module = "builtin"
-"#,
-    );
+    create_rust_grammar(temp_dir.path());
     create_file(
         &temp_dir.path().join("src/domain/order.rs"),
         r#"
@@ -191,46 +184,6 @@ context SalesContext {
 
     let report = check_file(&kide_path).unwrap();
     assert!(report.violations.is_empty());
-}
-
-#[test]
-fn configured_wasm_adapter_missing_module_reports_graceful_warning() {
-    let temp_dir = TempDir::new().unwrap();
-    create_rust_grammar_with_adapter(
-        temp_dir.path(),
-        r#"[adapter.native]
-backend_kind = "wasm"
-module = "missing-adapter.wasm"
-"#,
-    );
-    create_file(
-        &temp_dir.path().join("src/domain/order.rs"),
-        r#"
-impl Order {
-    pub fn ship(&mut self) {}
-}
-"#,
-    );
-    let kide_path = temp_dir.path().join("main.kide");
-    create_file(
-        &kide_path,
-        r#"
-context SalesContext {
-  aggregate Order {
-    command ship() bound to "src/domain/order.rs" symbol "Order::ship"
-  }
-}
-"#,
-    );
-
-    let report = check_file(&kide_path).unwrap();
-    let warning = report
-        .violations
-        .iter()
-        .find(|violation| violation.code == CODE_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE)
-        .unwrap();
-    assert_eq!(warning.severity, ViolationSeverity::Warning);
-    assert!(warning.message.contains("adapter runtime is unavailable"));
 }
 
 #[test]
@@ -1501,23 +1454,45 @@ fn create_file(path: &Path, source: &str) {
     std::fs::write(path, source).unwrap();
 }
 
-fn create_rust_grammar_with_adapter(base_dir: &Path, adapter_block: &str) {
+fn create_rust_grammar(base_dir: &Path) {
+    // Copy the real WASM file from the workspace grammars directory
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../grammars");
+    let wasm_source = workspace_root.join("rust/tree-sitter-rust.wasm");
+    let grammar_dir = base_dir.join("grammars/rust");
+    std::fs::create_dir_all(grammar_dir.join("queries")).unwrap();
+
+    // Write manifest
     create_file(
-        &base_dir.join("grammars/rust/manifest.toml"),
-        &format!(
-            r#"language = "rust"
+        &grammar_dir.join("manifest.toml"),
+        r#"language = "rust"
 version = "0.24.0"
+wasm_file = "tree-sitter-rust.wasm"
+extensions = [".rs"]
+display_name = "Rust"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
 
-{}
+[queries.boundary_references]
+source = """
+[
+  (use_declaration)
+  (type_identifier)
+  (scoped_identifier)
+  (call_expression)
+] @reference
+"""
 "#,
-            adapter_block
-        ),
     );
+
+    // Copy WASM file if it exists, otherwise tests that require parsing will be skipped
+    if wasm_source.exists() {
+        std::fs::copy(&wasm_source, grammar_dir.join("tree-sitter-rust.wasm")).unwrap();
+    }
+
+    // Write query file
     create_file(
-        &base_dir.join("grammars/rust/queries/symbol_exists.scm"),
+        &grammar_dir.join("queries/symbol_exists.scm"),
         r#"
 (function_item
   name: (identifier) @name)

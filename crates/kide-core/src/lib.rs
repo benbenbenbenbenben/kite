@@ -1,8 +1,6 @@
 mod adapter_runtime;
 mod grammar_registry;
-mod prisma_adapter;
-mod rust_adapter;
-mod typescript_adapter;
+mod wasm_adapter;
 
 use adapter_runtime::AdapterRuntimeEngine;
 use anyhow::{Context, Result};
@@ -283,18 +281,20 @@ fn validate_context(
             ContextElement::Dictionary(dictionary) => {
                 validate_dictionary(context, dictionary, &bound_sources, violations)
             }
-            ContextElement::Boundary(boundary) => {
-                validate_boundary(context, boundary, &bound_sources, adapter_runtime, violations)
-            }
-            ContextElement::Aggregate(aggregate) => {
-                validate_aggregate(
-                    &aggregate,
-                    base_dir,
-                    grammar_registry,
-                    adapter_runtime,
-                    violations,
-                )?
-            }
+            ContextElement::Boundary(boundary) => validate_boundary(
+                context,
+                boundary,
+                &bound_sources,
+                adapter_runtime,
+                violations,
+            ),
+            ContextElement::Aggregate(aggregate) => validate_aggregate(
+                &aggregate,
+                base_dir,
+                grammar_registry,
+                adapter_runtime,
+                violations,
+            )?,
         }
     }
     Ok(())
@@ -554,23 +554,31 @@ fn validate_aggregate(
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     if let Some(binding) = &aggregate.binding {
-        validate_binding(binding, base_dir, grammar_registry, adapter_runtime, violations)?;
+        validate_binding(
+            binding,
+            base_dir,
+            grammar_registry,
+            adapter_runtime,
+            violations,
+        )?;
     }
 
     for member in &aggregate.members {
         match member {
-            AggregateMember::Command(command) => {
-                validate_command(command, base_dir, grammar_registry, adapter_runtime, violations)?
-            }
-            AggregateMember::Invariant(invariant) => {
-                validate_invariant(
-                    invariant,
-                    base_dir,
-                    grammar_registry,
-                    adapter_runtime,
-                    violations,
-                )?
-            }
+            AggregateMember::Command(command) => validate_command(
+                command,
+                base_dir,
+                grammar_registry,
+                adapter_runtime,
+                violations,
+            )?,
+            AggregateMember::Invariant(invariant) => validate_invariant(
+                invariant,
+                base_dir,
+                grammar_registry,
+                adapter_runtime,
+                violations,
+            )?,
             AggregateMember::Field(_) => {}
         }
     }
@@ -586,7 +594,13 @@ fn validate_command(
 ) -> Result<()> {
     if let RuleBody::Binding(binding) = &command.body {
         validate_command_binding_intent(command, binding, violations);
-        validate_binding(binding, base_dir, grammar_registry, adapter_runtime, violations)?;
+        validate_binding(
+            binding,
+            base_dir,
+            grammar_registry,
+            adapter_runtime,
+            violations,
+        )?;
         validate_command_binding_arity(
             command,
             binding,
@@ -679,7 +693,7 @@ fn validate_command_binding_arity(
     if actual_arity == expected_arity {
         return Ok(());
     }
-    let language_name = language_display_name(&language);
+    let language_name = language_display_name_from_registry(grammar_registry, &language);
 
     violations.push(Violation {
         severity: ViolationSeverity::Error,
@@ -707,7 +721,13 @@ fn validate_invariant(
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     if let RuleBody::Binding(binding) = &invariant.body {
-        validate_binding(binding, base_dir, grammar_registry, adapter_runtime, violations)?;
+        validate_binding(
+            binding,
+            base_dir,
+            grammar_registry,
+            adapter_runtime,
+            violations,
+        )?;
     }
     Ok(())
 }
@@ -1003,13 +1023,11 @@ fn starts_with_any_prefix(name: &str, prefixes: &[&str]) -> bool {
     prefixes.iter().any(|prefix| lower_name.starts_with(prefix))
 }
 
-fn language_display_name(language: &str) -> &'static str {
-    match language {
-        "rust" => "Rust",
-        "typescript" => "TypeScript",
-        "prisma" => "Prisma",
-        _ => "bound",
-    }
+fn language_display_name_from_registry(
+    grammar_registry: &GrammarRegistry,
+    language: &str,
+) -> String {
+    grammar_registry.display_name(language).to_owned()
 }
 
 pub(crate) fn nearest_symbol_name(target_symbol: &str, candidates: Vec<String>) -> Option<String> {

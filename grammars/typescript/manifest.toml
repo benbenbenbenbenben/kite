@@ -1,17 +1,19 @@
 language = "typescript"
 version = "0.23.2"
-grammar_dir = "tree-sitter-typescript-0.23.2"
-
-[adapter]
-wasm_fallback_to_native = true
-
-[adapter.native]
-backend_kind = "wasmtime_wasm"
-module = "kide.adapters.typescript"
-
-[adapter.wasm]
-backend_kind = "js_bridge"
-module = "kide.adapters.typescript"
+wasm_file = "tree-sitter-typescript.wasm"
+tsx_wasm_file = "tree-sitter-tsx.wasm"
+extensions = [".ts", ".tsx"]
+display_name = "TypeScript"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
+
+[queries.boundary_references]
+source = """
+[
+  (import_statement)
+  (type_identifier)
+  (call_expression)
+  (new_expression)
+] @reference
+"""
