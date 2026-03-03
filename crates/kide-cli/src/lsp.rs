@@ -8,7 +8,8 @@ use tower_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DocumentChangeOperation, DocumentChanges, DocumentSymbol,
     DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse,
-    InitializeParams, InitializeResult, Location, MessageType, NumberOrString, OneOf, Position,
+    Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    Location, MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, Position,
     PublishDiagnosticsParams, Range, ResourceOp, ServerCapabilities, SymbolKind,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
@@ -95,6 +96,7 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -198,6 +200,37 @@ impl LanguageServer for Backend {
         let actions =
             code_actions_for_diagnostics(&params.text_document.uri, &params.context.diagnostics);
         Ok((!actions.is_empty()).then_some(actions))
+    }
+
+    async fn hover(&self, params: HoverParams) -> jsonrpc::Result<Option<Hover>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let Some(source) = self.source_for_uri(&uri) else {
+            return Ok(None);
+        };
+
+        let base_dir = uri
+            .to_file_path()
+            .ok()
+            .and_then(|path| path.parent().map(|parent| parent.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let hover_info = kide_core::hover_at(&source, &base_dir, position.line, position.character)
+            .ok()
+            .flatten();
+
+        let Some(info) = hover_info else {
+            return Ok(None);
+        };
+
+        Ok(Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: info.markdown,
+            }),
+            range: Some(range_from_span(info.span)),
+        }))
     }
 }
 

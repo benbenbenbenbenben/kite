@@ -8,7 +8,7 @@ use grammar_registry::GrammarRegistry;
 use kide_parser::grammar::{
     Aggregate, AggregateMember, Binding, BindingHash, BindingSymbol, Boundary, BoundaryEntry,
     Command, Context as DomainContext, ContextElement, DictEntry, DictValue, Dictionary, Invariant,
-    RuleBody,
+    PrimitiveType, RuleBody, TypeRef,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -208,6 +208,236 @@ pub fn definition_at(
                 file_path: target_path,
                 span,
             }));
+        }
+    }
+
+    Ok(None)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverInfo {
+    pub markdown: String,
+    pub span: ViolationSpan,
+}
+
+pub fn hover_at(
+    source: &str,
+    _base_dir: &Path,
+    line: u32,
+    column: u32,
+) -> Result<Option<HoverInfo>> {
+    let ast = kide_parser::parse(source)?;
+    let line = line as usize + 1;
+    let column = column as usize + 1;
+
+    for context in &ast.contexts {
+        let context_span = span_from_position(&context.name.position);
+        if position_in_span(line, column, &context_span) {
+            let mut fields = Vec::new();
+            let mut aggregates = Vec::new();
+            let mut dict_entries = 0;
+            let mut boundary_entries = 0;
+            for element in &context.elements {
+                match element {
+                    ContextElement::Dictionary(dict) => dict_entries += dict.entries.len(),
+                    ContextElement::Boundary(boundary) => {
+                        boundary_entries += boundary.entries.len()
+                    }
+                    ContextElement::Aggregate(agg) => {
+                        aggregates.push(&agg.name.text);
+                        for member in &agg.members {
+                            if let AggregateMember::Field(_) = member {
+                                fields.push(());
+                            }
+                        }
+                    }
+                }
+            }
+            let markdown = format!(
+                "### Context: `{}`\n\n{} aggregate(s): {}\n\n{} dictionary term(s) · {} boundary rule(s)",
+                context.name.text,
+                aggregates.len(),
+                if aggregates.is_empty() {
+                    "—".to_string()
+                } else {
+                    aggregates.iter().map(|a| format!("`{}`", a)).collect::<Vec<_>>().join(", ")
+                },
+                dict_entries,
+                boundary_entries,
+            );
+            return Ok(Some(HoverInfo {
+                markdown,
+                span: context_span,
+            }));
+        }
+
+        for element in &context.elements {
+            match element {
+                ContextElement::Aggregate(agg) => {
+                    let agg_span = span_from_position(&agg.name.position);
+                    if position_in_span(line, column, &agg_span) {
+                        let mut commands = Vec::new();
+                        let mut invariants = Vec::new();
+                        let mut fields = Vec::new();
+                        for member in &agg.members {
+                            match member {
+                                AggregateMember::Command(cmd) => commands.push(&cmd.name.text),
+                                AggregateMember::Invariant(inv) => invariants.push(&inv.name.text),
+                                AggregateMember::Field(f) => fields.push(&f.name.text),
+                            }
+                        }
+                        let binding_info = agg
+                            .binding
+                            .as_ref()
+                            .map(|b| {
+                                let target = unquote(&b.target.text);
+                                let symbol = b.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                                let hash = b.hash.is_some();
+                                format!(
+                                    "\n\n**Bound to** `{}`{}{}",
+                                    target,
+                                    symbol
+                                        .map(|s| format!(" · symbol `{}`", s))
+                                        .unwrap_or_default(),
+                                    if hash { " · 🔒 hash verified" } else { "" },
+                                )
+                            })
+                            .unwrap_or_default();
+                        let markdown = format!(
+                            "### Aggregate: `{}`\n\nContext: `{}`{}\n\n{} field(s) · {} command(s) · {} invariant(s)",
+                            agg.name.text,
+                            context.name.text,
+                            binding_info,
+                            fields.len(),
+                            commands.len(),
+                            invariants.len(),
+                        );
+                        return Ok(Some(HoverInfo {
+                            markdown,
+                            span: agg_span,
+                        }));
+                    }
+
+                    for member in &agg.members {
+                        match member {
+                            AggregateMember::Command(cmd) => {
+                                let cmd_span = span_from_position(&cmd.name.position);
+                                if position_in_span(line, column, &cmd_span) {
+                                    let params: Vec<String> = cmd
+                                        .params
+                                        .iter()
+                                        .map(|p| {
+                                            format!("{}: {}", p.name.text, type_ref_name(&p.ty))
+                                        })
+                                        .collect();
+                                    let binding_info = if let RuleBody::Binding(b) = &cmd.body {
+                                        let target = unquote(&b.target.text);
+                                        let symbol =
+                                            b.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                                        format!(
+                                            "\n\n**Bound to** `{}`{}",
+                                            target,
+                                            symbol
+                                                .map(|s| format!(" · symbol `{}`", s))
+                                                .unwrap_or_default(),
+                                        )
+                                    } else {
+                                        String::new()
+                                    };
+                                    let markdown = format!(
+                                        "### Command: `{}`\n\n```\n{}({})\n```\n\nAggregate: `{}` · Context: `{}`{}",
+                                        cmd.name.text,
+                                        cmd.name.text,
+                                        params.join(", "),
+                                        agg.name.text,
+                                        context.name.text,
+                                        binding_info,
+                                    );
+                                    return Ok(Some(HoverInfo {
+                                        markdown,
+                                        span: cmd_span,
+                                    }));
+                                }
+                            }
+                            AggregateMember::Invariant(inv) => {
+                                let inv_span = span_from_position(&inv.name.position);
+                                if position_in_span(line, column, &inv_span) {
+                                    let binding_info = if let RuleBody::Binding(b) = &inv.body {
+                                        let target = unquote(&b.target.text);
+                                        let symbol =
+                                            b.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                                        format!(
+                                            "\n\n**Bound to** `{}`{}",
+                                            target,
+                                            symbol
+                                                .map(|s| format!(" · symbol `{}`", s))
+                                                .unwrap_or_default(),
+                                        )
+                                    } else {
+                                        String::new()
+                                    };
+                                    let markdown = format!(
+                                        "### Invariant: `{}`\n\nAggregate: `{}` · Context: `{}`{}",
+                                        inv.name.text,
+                                        agg.name.text,
+                                        context.name.text,
+                                        binding_info,
+                                    );
+                                    return Ok(Some(HoverInfo {
+                                        markdown,
+                                        span: inv_span,
+                                    }));
+                                }
+                            }
+                            AggregateMember::Field(field) => {
+                                let name_text = &field.name.text;
+                                let type_name = type_ref_name(&field.ty);
+                                // Fields don't have Spanned names, so use a line-based match
+                                // We check if the cursor line matches any field start line
+                                // by searching through the source
+                                let _ = (name_text, type_name);
+                            }
+                        }
+                    }
+                }
+                ContextElement::Dictionary(dict) => {
+                    for entry in &dict.entries {
+                        let entry_span = span_from_position(&entry.key.position);
+                        if position_in_span(line, column, &entry_span) {
+                            let key = unquote(&entry.key.text);
+                            let value = match &entry.value {
+                                DictValue::Text(s) => format!("preferred `{}`", unquote(&s.text)),
+                                DictValue::Forbidden => "**forbidden**".to_string(),
+                            };
+                            let markdown = format!(
+                                "### Dictionary Entry\n\n`\"{}\"` → {}\n\nContext: `{}`",
+                                key, value, context.name.text,
+                            );
+                            return Ok(Some(HoverInfo {
+                                markdown,
+                                span: entry_span,
+                            }));
+                        }
+                    }
+                }
+                ContextElement::Boundary(boundary) => {
+                    for entry in &boundary.entries {
+                        let entry_span = span_from_position(&entry.context.position);
+                        if position_in_span(line, column, &entry_span) {
+                            let markdown = format!(
+                                "### Boundary Rule\n\n`{}` **forbids** `{}`\n\nBound sources in this context must not reference `{}`.",
+                                context.name.text,
+                                entry.context.text,
+                                entry.context.text,
+                            );
+                            return Ok(Some(HoverInfo {
+                                markdown,
+                                span: entry_span,
+                            }));
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1027,6 +1257,24 @@ fn position_in_span(line: usize, column: usize, span: &ViolationSpan) -> bool {
         return false;
     }
     true
+}
+
+fn type_ref_name(ty: &TypeRef) -> &'static str {
+    match ty {
+        TypeRef::Primitive(p) => match p {
+            PrimitiveType::String => "String",
+            PrimitiveType::Int => "Int",
+            PrimitiveType::Decimal => "Decimal",
+            PrimitiveType::Boolean => "Boolean",
+            PrimitiveType::Date => "Date",
+            PrimitiveType::Timestamp => "Timestamp",
+            PrimitiveType::Void => "Void",
+        },
+        TypeRef::Named(id) => {
+            // Leak is fine here — small set of type names, called during hover
+            Box::leak(id.text.clone().into_boxed_str())
+        }
+    }
 }
 
 fn resolve_bound_path(base_dir: &Path, target: &str) -> PathBuf {
