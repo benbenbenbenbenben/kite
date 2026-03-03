@@ -1,0 +1,63 @@
+context CoreLanguageParsingContext {
+  dictionary {
+    "Program" => "ContextCollection"
+    "ContextElement" => "AggregateOrDictionary"
+    "UnsupportedContextElement" => forbidden
+  }
+
+  aggregate ParserAstModel bound to "../crates/kide-parser/src/grammar/mod.rs" hash "grammar-v1" {
+    contexts: Int
+    command parseSource(source: String) bound to "../crates/kide-parser/src/lib.rs" symbol "parse" hash "parser-entrypoint"
+    command parseSpecFile(path: String) bound to "../crates/kide-parser/src/lib.rs" symbol "parse_file"
+    invariant ParserBuildsProgramAst bound to "../crates/kide-parser/src/lib.rs" symbol "parse"
+  }
+}
+
+context BindingValidationContext {
+  dictionary {
+    "Binding" => "BoundPathAndOptionalSymbol"
+    "Violation" => "SeverityCodeMessage"
+    "UncheckedDependency" => forbidden
+  }
+
+  aggregate BindingValidationModel bound to "../crates/kide-core/src/lib.rs" hash "binding-validation" {
+    errors: Int
+    warnings: Int
+    command checkSourceInDirectory(source: String, baseDir: String) bound to "../crates/kide-core/src/lib.rs" symbol "check_source_in_dir"
+    command validateSingleBinding(target: String) bound to "../crates/kide-core/src/lib.rs" symbol "validate_binding"
+    invariant BoundPathsResolveFromBaseDirectory bound to "../crates/kide-core/src/lib.rs" symbol "resolve_bound_path"
+  }
+}
+
+context SymbolVerificationContext {
+  dictionary {
+    "Rust" => "rust"
+    "TypeScript" => "typescript"
+    "UnregisteredGrammar" => forbidden
+  }
+
+  aggregate SymbolVerificationModel bound to "../crates/kide-core/src/lib.rs" hash "symbol-verification" {
+    rustSupported: Boolean
+    typescriptSupported: Boolean
+    command verifyRustSymbol(source: String, symbol: String) bound to "../crates/kide-core/src/rust_adapter.rs" symbol "symbol_exists"
+    command findRustSymbolSpan(source: String, symbol: String) bound to "../crates/kide-core/src/rust_adapter.rs" symbol "find_symbol_span"
+    command verifyTypeScriptSymbol(source: String, symbol: String) bound to "../crates/kide-core/src/typescript_adapter.rs" symbol "symbol_exists" hash "symbol_exists"
+    invariant TypeScriptScopeSpellingsResolveToLeafName bound to "../crates/kide-core/src/typescript_adapter.rs" symbol "symbol_leaf_name"
+  }
+}
+
+context DefinitionResolutionContext {
+  dictionary {
+    "DefinitionLocation" => "FilePathAndSpan"
+    "BindingSpan" => "LineColumnRange"
+    "UnknownDefinition" => forbidden
+  }
+
+  aggregate DefinitionResolutionModel bound to "../crates/kide-core/src/lib.rs" hash "definition-resolution" {
+    line: Int
+    column: Int
+    command resolveDefinitionAt(line: Int, column: Int) bound to "../crates/kide-core/src/lib.rs" symbol "definition_at"
+    command collectProgramBindings(source: String) bound to "../crates/kide-core/src/lib.rs" symbol "bindings_in_program"
+    invariant CursorMustLandInsideBindingSpan bound to "../crates/kide-core/src/lib.rs" symbol "position_in_span"
+  }
+}

@@ -1,0 +1,6 @@
+/target
+/dist
+/.toolchain
+/node_modules
+/vscode-kide/node_modules
+/vscode-kide/out

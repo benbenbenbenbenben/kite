@@ -1,0 +1,191 @@
+context IdentityAccessContext {
+  dictionary {
+    "User" => "KnownUser"
+    "MagicLink" => "PasetoClaim"
+    "LoginSession" => "Session"
+    "AuthToken" => "PasetoClaim"
+    "IdentityRecord" => "KnownUserSession"
+    "Account" => forbidden
+  }
+
+  boundary {
+    forbid PaymentsAndFulfillmentContext
+    forbid IntegrationContext
+  }
+
+  aggregate KnownUserSession bound to "../src/lib/services/auth.ts" {
+    knownUserId: String
+    email: String
+    sessionIssuedAt: Timestamp
+    sessionExpiresAt: Timestamp
+    primaryDropShopId: String
+    command requestSession(email: String) bound to "../src/lib/services/auth.ts"
+    command verifyClaim(claim: String) bound to "../src/lib/services/auth.ts"
+    command getUserDetails(claim: String) bound to "../src/lib/services/auth.ts"
+    command refreshSession(claim: String) bound to "../src/lib/services/auth.ts"
+    command revokeSession(claim: String) bound to "../src/lib/services/auth.ts"
+    invariant SessionClaimsResolveSubject bound to "../src/lib/services/auth.ts"
+    invariant MembershipChecksUseAuthenticatedSubject bound to "../src/lib/services/auth.ts"
+    invariant ExpiredClaimsCannotAuthorizeMutations bound to "../src/lib/services/auth.ts"
+    invariant RevokedClaimsCannotBeRefreshed bound to "../src/lib/services/auth.ts"
+  }
+}
+
+context DropShopOnboardingContext {
+  dictionary {
+    "Store" => "DropShop"
+    "Owner" => "DropShopAdministrator"
+    "VerificationCode" => "Verification"
+    "ShopProfile" => "DropShopProfile"
+    "Merchant" => forbidden
+  }
+
+  boundary {
+    forbid BookingLifecycleContext
+    forbid PaymentsAndFulfillmentContext
+  }
+
+  aggregate DropShop bound to "../prisma/schema.prisma" {
+    dropShopId: String
+    displayName: String
+    legalName: String
+    contactEmail: String
+    isVerified: Boolean
+    command registerDropShop(registration: DropShopRegistration) bound to "../src/lib/services/registration.ts"
+    command verifyDropShopRegistration(verification: DropShopVerification) bound to "../src/lib/services/registration.ts"
+    command resendDropShopVerification(dropShopId: String) bound to "../src/lib/services/registration.ts"
+    command updateDropShopProfile(dropShopId: String, displayName: String, contactEmail: String) bound to "../src/lib/services/registration.ts"
+    command addAdminToDropShop(newAdminId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
+    command removeAdminFromDropShop(adminId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
+    command addUserToDropShop(newUserId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
+    command removeUserFromDropShop(userId: String, dropShopId: String) bound to "../src/lib/services/registration.ts"
+    invariant VerificationTokenMustBeUnverified bound to "../src/lib/services/registration.ts"
+    invariant OnlyExistingDropShopAdminsCanMutateMembership bound to "../src/lib/services/registration.ts"
+    invariant VerificationCodeExpiresBeforeConfirmation bound to "../src/lib/services/registration.ts"
+    invariant VerifiedDropShopsMustRetainAtLeastOneAdmin bound to "../src/lib/services/registration.ts"
+  }
+}
+
+context BookingLifecycleContext {
+  dictionary {
+    "Parcel" => "Drop"
+    "Customer" => "KnownUser"
+    "CollectionPoint" => "DropShop"
+    "PickupCode" => "DropCollectionCode"
+    "Order" => forbidden
+  }
+
+  boundary {
+    forbid IdentityAccessContext
+    forbid PaymentsAndFulfillmentContext
+  }
+
+  aggregate Drop bound to "../prisma/schema.prisma" {
+    dropId: String
+    status: DropStatus
+    customerReference: String
+    addresseeName: String
+    addresseeEmail: String
+    createdAt: Timestamp
+    dispatchedAt: Timestamp
+    command createDrop(request: DropShopBookingRequest) bound to "../src/lib/services/booking.ts"
+    command notifyDropDispatched(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
+    command notifyDropArrival(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
+    command notifyDropCollection(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
+    command cancelDrop(dropId: String, claim: String) bound to "../src/lib/services/booking.ts"
+    command transferDropToDropShop(dropId: String, targetDropShopId: String, claim: String) bound to "../src/lib/services/booking.ts"
+    command getDrop(dropIdOrClaim: String, claim: String) bound to "../src/lib/services/booking.ts"
+    command getCurrentUserDrops(claim: String) bound to "../src/lib/services/booking.ts"
+    command getDropshopDrops(dropshopId: String, claim: String) bound to "../src/lib/services/booking.ts"
+    invariant OnlyVerifiedDropShopsCanAcceptDropBookings bound to "../src/lib/services/booking.ts"
+    invariant DispatchRequiresDropCreatedStatus bound to "../src/lib/services/booking.ts"
+    invariant ArrivalRequiresDropShopMembership bound to "../src/lib/services/booking.ts"
+    invariant CollectionRequiresReceiverOrDropShopStaff bound to "../src/lib/services/booking.ts"
+    invariant CancellationRequiresDropCreatedStatus bound to "../src/lib/services/booking.ts"
+    invariant TransferRequiresVerifiedTargetDropShop bound to "../src/lib/services/booking.ts"
+  }
+
+  aggregate DropShopSearch bound to "../src/lib/services/booking.ts" {
+    query: String
+    region: String
+    radiusKm: Int
+    command findDropShop(query: SimpleQuery) bound to "../src/lib/services/booking.ts"
+    command findDropShopsNear(postcode: String, radiusKm: Int, claim: String) bound to "../src/lib/services/booking.ts"
+    command addressSearch(query: String) bound to "../src/lib/services/booking.ts"
+    invariant SearchResultsIncludeVerifiedDropShopsOnly bound to "../src/lib/services/booking.ts"
+    invariant SearchRadiusMustBeWithinServiceArea bound to "../src/lib/services/booking.ts"
+  }
+}
+
+context PaymentsAndFulfillmentContext {
+  dictionary {
+    "CheckoutSession" => "StripeSession"
+    "Payment" => "PaymentReference"
+    "Evidence" => "ViewBookingStatusClaim"
+    "PaymentIntent" => "StripePaymentIntent"
+    "Invoice" => forbidden
+  }
+
+  boundary {
+    forbid DropShopOnboardingContext
+    forbid IntegrationContext
+  }
+
+  aggregate PaymentReference bound to "../prisma/schema.prisma" {
+    paymentReferenceId: String
+    stripeSession: String
+    amountMinor: Int
+    currency: String
+    paymentStatus: String
+    paidAt: Timestamp
+    dropId: String
+    customerClaim: String
+    command createCheckoutSession(dropId: String, claim: String) bound to "../src/routes/dropshop/pay/webhook.ts"
+    command processStripeWebhook() bound to "../src/routes/dropshop/pay/webhook.ts"
+    command reconcilePaymentReference(paymentReferenceId: String) bound to "../src/routes/dropshop/pay/webhook.ts"
+    invariant PaidCheckoutCreatesPaymentReference bound to "../src/routes/dropshop/pay/webhook.ts"
+    invariant SuccessfulPaymentActivatesDropAndDispatchAddressee bound to "../src/routes/dropshop/pay/webhook.ts"
+    invariant WebhookEventsAreIdempotentPerStripeEventId bound to "../src/routes/dropshop/pay/webhook.ts"
+    invariant CapturedPaymentsMustReferenceExistingDrop bound to "../src/routes/dropshop/pay/webhook.ts"
+  }
+}
+
+context IntegrationContext {
+  dictionary {
+    "EmailQueue" => "EmailOutbox"
+    "RPCMethod" => "ServiceMethod"
+    "RPCEnvelope" => "JsonRpcRequest"
+    "MessageBus" => forbidden
+  }
+
+  boundary {
+    forbid IdentityAccessContext
+    forbid BookingLifecycleContext
+  }
+
+  aggregate NotificationOutbox bound to "../prisma/schema.prisma" {
+    emailOutboxId: String
+    subject: String
+    recipient: String
+    templateKey: String
+    attempts: Int
+    lastAttemptAt: Timestamp
+    command sendEmail(email: Email) bound to "../src/lib/services/notifications.ts"
+    command sendSnailMail(mail: Mail) bound to "../src/lib/services/notifications.ts"
+    command scheduleBookingStatusEmail(dropId: String, recipient: String) bound to "../src/lib/services/notifications.ts"
+    command markEmailDispatched(emailOutboxId: String) bound to "../src/lib/services/notifications.ts"
+    invariant EmailIsPersistedToOutboxBeforeWorkerDispatch bound to "../src/lib/services/notifications.ts"
+    invariant OutboxRetriesAreCappedBeforeEscalation bound to "../src/lib/services/notifications.ts"
+  }
+
+  aggregate RpcGateway bound to "../src/lib/rpc.ts" {
+    method: String
+    serviceName: String
+    serviceVersion: String
+    command registerService(implementation: ServiceImplementation) bound to "../src/lib/rpc.ts"
+    command dispatchRpcRequest(request: JsonRpcRequest) bound to "../src/lib/rpc.ts"
+    command dispatchRpcNotification(request: JsonRpcRequest) bound to "../src/lib/rpc.ts"
+    invariant WrappedServicesReceiveUserPrincipleWhenPresent bound to "../src/lib/rpc.ts"
+    invariant RpcMethodsRequireRegisteredServiceTarget bound to "../src/lib/rpc.ts"
+  }
+}

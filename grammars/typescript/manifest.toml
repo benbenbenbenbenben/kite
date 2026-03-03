@@ -1,0 +1,17 @@
+language = "typescript"
+version = "0.23.2"
+grammar_dir = "tree-sitter-typescript-0.23.2"
+
+[adapter]
+wasm_fallback_to_native = true
+
+[adapter.native]
+backend_kind = "wasmtime_wasm"
+module = "kide.adapters.typescript"
+
+[adapter.wasm]
+backend_kind = "js_bridge"
+module = "kide.adapters.typescript"
+
+[queries]
+symbol_exists = "queries/symbol_exists.scm"

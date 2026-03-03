@@ -1,0 +1,61 @@
+{
+  "name": "kide-vscode",
+  "displayName": "Kide",
+  "description": "VS Code integration for Kide DSL with integrated LSP support.",
+  "version": "0.1.0",
+  "publisher": "kide",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:kide"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "kide",
+        "aliases": [
+          "Kide"
+        ],
+        "extensions": [
+          ".kide"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kide",
+        "scopeName": "source.kide",
+        "path": "./syntaxes/kide.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Kide",
+      "properties": {
+        "kide.server.path": {
+          "type": "string",
+          "default": "kide",
+          "description": "Path to the kide executable used to launch the language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.7.2"
+  }
+}

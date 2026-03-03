@@ -1,0 +1,6 @@
+context ShippingRegressionPassContext {
+  aggregate ParserBindingSmoke bound to "../../../crates/kide-parser/src/lib.rs" {
+    command parseSource(source: String) bound to "../../../crates/kide-parser/src/lib.rs" symbol "parse"
+    invariant ParseEntryPointExists bound to "../../../crates/kide-parser/src/lib.rs" symbol "parse"
+  }
+}

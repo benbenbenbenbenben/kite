@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "kide-extension: npm install",
+      "type": "shell",
+      "command": "npm install",
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-kide"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "kide-extension: compile",
+      "type": "shell",
+      "command": "npm run compile",
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-kide"
+      },
+      "dependsOn": "kide-extension: npm install",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "kide-extension: watch",
+      "type": "shell",
+      "command": "npm run watch",
+      "options": {
+        "cwd": "${workspaceFolder}/vscode-kide"
+      },
+      "dependsOn": "kide-extension: npm install",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch"
+    },
+    {
+      "label": "kide-cli: build debug",
+      "type": "shell",
+      "command": "cargo build -p kide-cli",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "kide-extension: debug prep",
+      "dependsOn": ["kide-extension: compile", "kide-cli: build debug"],
+      "problemMatcher": []
+    }
+  ]
+}

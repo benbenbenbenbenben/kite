@@ -6,7 +6,7 @@ Here is the `README.md` for the repository. It pitches the philosophy, explains 
 
 > **kide** *(Finnish)*: Crystal. The crystallized, immutable truth of a system.
 
-**Kide is a continuous architecture enforcement tool for Domain-Driven Design (DDD).** It provides a Domain-Specific Language (`.kide`) to define your Bounded Contexts, Aggregates, and Sagas. But unlike traditional Model-Driven tools, **Kide does not generate code.** Instead, it uses [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) (via [this `rust-sitter` fork](https://github.com/benbenbenbenbenben/krust-sitter)) to parse your actual implementation files (Rust, TypeScript, Go, etc.) and validates that your codebase structurally matches your architectural design.
+**Kide is a continuous architecture enforcement tool for Domain-Driven Design (DDD).** It provides a Domain-Specific Language (`.kide`) to define your Bounded Contexts, Aggregates, and Sagas. But unlike traditional Model-Driven tools, **Kide does not generate code.** Instead, it uses [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) (via [this `rust-sitter` fork](https://github.com/benbenbenbenbenben/krust-sitter)) to parse your actual implementation files (currently Rust and TypeScript/TSX) and validates that your codebase structurally matches your architectural design.
 
 If your code drifts from your domain model, the Kide compiler fails. **Technical debt is now a syntax error.**
 
@@ -56,7 +56,7 @@ Write your code however you like. Kide only cares about the structural contract.
 
 ```rust
 impl Order {
-    // Kide's rust-sitter engine verifies this exists and takes 0 arguments
+    // Kide verifies the bound symbol exists in the target file
     pub fn ship(&mut self) -> Result<(), DomainError> {
         self.verify_not_empty()?;
         self.status = OrderStatus::Shipped;
@@ -152,30 +152,102 @@ Kide is part of the **K-Stack**, a suite of tools designed for high-assurance, e
 
 ### Installation
 
-*(Coming soon)*
-
 ```bash
-cargo install kide-cli
-
+cargo build --release -p kide-cli
 ```
 
 ### Usage
 
-Initialize a new Kide workspace:
+Validate a `.kide` file:
 
 ```bash
-kide init
-
+kide check domain/main.kide
 ```
 
-This creates a `domain/` folder with a `main.kide` entry point.
-
-Run the verifier:
+Start the integrated LSP server (stdio transport):
 
 ```bash
-kide check --strict
-
+kide start-lsp
 ```
+
+### Diagnostics and editor metadata
+
+- `kide check` emits stable diagnostic codes with severity, e.g. `error [BINDING_SYMBOL_NOT_FOUND] ...`.
+- Dictionary rules run against source files bound within each context (`aggregate`, `command`, and `invariant` bindings).
+- `"Term" => forbidden` emits `error [DICTIONARY_TERM_FORBIDDEN]`.
+- `"Term" => "Preferred"` emits `warning [DICTIONARY_TERM_PREFERRED]` with a replacement hint.
+- Duplicate dictionary keys in the same block emit `error [DICTIONARY_DUPLICATE_KEY]`.
+- `boundary { forbid OtherContext }` emits `error [CONTEXT_BOUNDARY_FORBIDDEN]` when forbidden context dependencies are referenced from bound Rust/TypeScript/TSX source files (imports/uses, type references, and call/new references); if structured extraction fails, Kide falls back to token matching.
+- Duplicate `forbid` entries in the same boundary block emit `error [CONTEXT_BOUNDARY_DUPLICATE_FORBID]`.
+- `boundary` self-forbid entries (`forbid CurrentContextName`) emit `warning [CONTEXT_BOUNDARY_SELF_FORBID]` with a fix hint.
+- If a `bound to` file is missing, Kide emits `error [BINDING_FILE_NOT_FOUND]` plus `warning [BINDING_SYMBOL_UNVERIFIED_DEPENDENCY]` for dependent `symbol` checks.
+- `hash "<value>"` must be lowercase SHA-256 hex (`64` chars) or Kide emits `error [BINDING_HASH_INVALID_FORMAT]`.
+- If a bound file exists and `hash` is present, Kide compares the declared hash against file contents and emits `error [BINDING_HASH_MISMATCH]` when they differ.
+- `error [BINDING_SYMBOL_NOT_FOUND]` includes a nearest-symbol hint when a close declaration exists in supported bound files.
+- `error [COMMAND_BINDING_ARITY_MISMATCH]` is emitted when a command's parameter count does not match a bound symbol's arity in Rust (`.rs`), TypeScript/TSX (`.ts`, `.tsx`), or Prisma (`.prisma` declarations are treated as zero-arity).
+- `warning [COMMAND_BINDING_INTENT_SUSPICIOUS]` is emitted when a write-oriented command (e.g. `create`, `ship`, `delete`) is bound to a read-oriented symbol (e.g. `get*`, `list*`, `find*`, `read*`).
+- The LSP publishes `Diagnostic.code` for rule IDs and `Diagnostic.codeDescription.href` when docs are available.
+- When present, diagnostic metadata is included in `Diagnostic.data` as `{ "code", "hint", "docsUri" }` to improve editor UX.
+
+### Symbol validation coverage
+
+- `bound symbol` validation is implemented for Rust (`.rs`), TypeScript (`.ts`, `.tsx`), and Prisma (`.prisma`).
+- TypeScript symbol matching accepts scoped spellings like `Order::ship`, `Order.ship`, and `Order#ship` (resolved to the leaf symbol name).
+- Prisma symbol matching validates declaration names from `model`, `enum`, `type`, `view`, `datasource`, and `generator` blocks.
+
+### Supported targets
+
+Native single-file executables:
+
+- Linux: `x86_64-unknown-linux-musl` (static)
+- Windows: `x86_64-pc-windows-msvc` (static CRT)
+- macOS: `x86_64-apple-darwin`, `aarch64-apple-darwin`
+
+WASI artifacts:
+
+- `kide-cli.wasm` (CLI flavor, built from `kide-cli`)
+- `kide.wasm` (runtime flavor, built from `kide`)
+
+Build scripts:
+
+```bash
+./scripts/build-native.sh
+./scripts/build-wasm.sh
+```
+
+`build-wasm.sh` expects `clang`/`ar` and WASI headers (`wasi-libc`); override via `WASI_INCLUDE`, `CC_wasm32_wasip1`, `AR_wasm32_wasip1`, and `CFLAGS_wasm32_wasip1` if needed.
+
+### VS Code extension
+
+`vscode-kide/` contains the extension that launches `kide start-lsp`.
+
+- Debug config: `.vscode/launch.json`
+- Build/watch tasks: `.vscode/tasks.json`
+
+Run extension compile manually:
+
+```bash
+cd vscode-kide
+npm install
+npm run compile
+```
+
+### Grammar registry
+
+Kide loads Tree-sitter query mappings from `grammars/<language>/manifest.toml`.
+
+- Rust grammar assets are vendored in `grammars/rust/tree-sitter-rust-0.24.0`.
+- `grammars/rust/queries/symbol_exists.scm` is used for symbol existence checks.
+- `grammars/typescript/queries/symbol_exists.scm` is used for TypeScript/TSX symbol existence checks.
+- Prisma grammar assets are vendored in `grammars/prisma/tree-sitter-prisma-1.6.0`.
+
+### Runtime-configurable adapters
+
+Grammar manifests can declare adapter runtime metadata under `[adapter]`, with runtime-specific entries (`[adapter.native]`, `[adapter.wasm]`) that provide `backend_kind` and `module` identifiers.
+
+- **Native path**: use `backend_kind = "wasmtime_wasm"` to run wasm adapters via a Wasmtime host in native builds.
+- **Wasm target path**: use `backend_kind = "js_bridge"` to route adapter calls through a JavaScript bridge when running wasm targets.
+- **Compatibility/fallback**: set `wasm_fallback_to_native = true` to use native adapter metadata when no explicit wasm adapter entry is present.
 
 ---
 

@@ -1,0 +1,18 @@
+{
+  "scopeName": "source.kide",
+  "name": "Kide",
+  "patterns": [
+    {
+      "match": "\\b(context|dictionary|aggregate|command|invariant|bound|to|symbol|hash|forbidden)\\b",
+      "name": "keyword.control.kide"
+    },
+    {
+      "match": "\"([^\"\\\\]|\\\\.)*\"",
+      "name": "string.quoted.double.kide"
+    },
+    {
+      "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b",
+      "name": "entity.name.kide"
+    }
+  ]
+}

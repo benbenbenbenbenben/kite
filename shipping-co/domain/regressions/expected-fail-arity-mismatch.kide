@@ -1,0 +1,5 @@
+context ShippingRegressionArityMismatchContext {
+  aggregate ParserBindingArityMismatch bound to "../../../crates/kide-parser/src/lib.rs" {
+    command parseWithoutArgs() bound to "../../../crates/kide-parser/src/lib.rs" symbol "parse"
+  }
+}
