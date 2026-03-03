@@ -13,7 +13,7 @@ context IdentityAccessContext {
     forbid IntegrationContext
   }
 
-  aggregate KnownUserSession bound to "../src/lib/services/auth.ts" symbol "KnownUserSession" {
+  aggregate KnownUserSession bound to "../src/lib/services/auth.ts" symbol "KnownUserSession" hash "b484d2f7b0885a2c2d9b7d13ccb7725bd87c635a4d547f98eaa0972ad5f718e7" {
     knownUserId: String
     email: String
     sessionIssuedAt: Timestamp
@@ -45,7 +45,7 @@ context DropShopOnboardingContext {
     forbid PaymentsAndFulfillmentContext
   }
 
-  aggregate DropShop bound to "../prisma/schema.prisma" symbol "DropShop" {
+  aggregate DropShop bound to "../prisma/schema.prisma" symbol "DropShop" hash "53b1b53d3e36758b43dd7d51ba549f8f4f4527bba03b55c61f044df729362904" {
     dropShopId: String
     displayName: String
     legalName: String
@@ -80,7 +80,7 @@ context BookingLifecycleContext {
     forbid PaymentsAndFulfillmentContext
   }
 
-  aggregate Drop bound to "../prisma/schema.prisma" symbol "Drop" {
+  aggregate Drop bound to "../prisma/schema.prisma" symbol "Drop" hash "53b1b53d3e36758b43dd7d51ba549f8f4f4527bba03b55c61f044df729362904" {
     dropId: String
     status: DropStatus
     customerReference: String
@@ -105,7 +105,7 @@ context BookingLifecycleContext {
     invariant TransferRequiresVerifiedTargetDropShop bound to "../src/lib/services/booking.ts" symbol "assertTransferRequiresVerifiedTargetDropShop"
   }
 
-  aggregate DropShopSearch bound to "../src/lib/services/booking.ts" symbol "DropShopSearch" {
+  aggregate DropShopSearch bound to "../src/lib/services/booking.ts" symbol "DropShopSearch" hash "62d02d123ec9cb040edf55f1cb0d9f3b19fdba14eb1adb4b641ff81cd560ab56" {
     query: String
     region: String
     radiusKm: Int
@@ -131,7 +131,7 @@ context PaymentsAndFulfillmentContext {
     forbid IntegrationContext
   }
 
-  aggregate PaymentReference bound to "../prisma/schema.prisma" symbol "PaymentReference" {
+  aggregate PaymentReference bound to "../prisma/schema.prisma" symbol "PaymentReference" hash "53b1b53d3e36758b43dd7d51ba549f8f4f4527bba03b55c61f044df729362904" {
     paymentReferenceId: String
     stripeSession: String
     amountMinor: Int
@@ -163,7 +163,7 @@ context IntegrationContext {
     forbid BookingLifecycleContext
   }
 
-  aggregate NotificationOutbox bound to "../prisma/schema.prisma" symbol "NotificationOutbox" {
+  aggregate NotificationOutbox bound to "../prisma/schema.prisma" symbol "NotificationOutbox" hash "53b1b53d3e36758b43dd7d51ba549f8f4f4527bba03b55c61f044df729362904" {
     emailOutboxId: String
     subject: String
     recipient: String
@@ -178,7 +178,7 @@ context IntegrationContext {
     invariant OutboxRetriesAreCappedBeforeEscalation bound to "../src/lib/services/notifications.ts" symbol "assertOutboxRetriesAreCappedBeforeEscalation"
   }
 
-  aggregate RpcGateway bound to "../src/lib/rpc.ts" symbol "RpcGateway" {
+  aggregate RpcGateway bound to "../src/lib/rpc.ts" symbol "RpcGateway" hash "d6c180092409d67a16fd6f5370b9fa4b633b5a2a0db20497b112d99e15f0e1e5" {
     method: String
     serviceName: String
     serviceVersion: String
