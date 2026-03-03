@@ -26,6 +26,7 @@ pub async fn run_stdio() -> Result<()> {
     let (service, socket) = LspService::new(|client| Backend {
         client,
         open_documents: Mutex::new(HashMap::new()),
+        workspace_roots: Mutex::new(Vec::new()),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 
@@ -35,6 +36,7 @@ pub async fn run_stdio() -> Result<()> {
 struct Backend {
     client: Client,
     open_documents: Mutex<HashMap<Url, String>>,
+    workspace_roots: Mutex<Vec<std::path::PathBuf>>,
 }
 
 impl Backend {
@@ -76,6 +78,38 @@ impl Backend {
         std::fs::read_to_string(path).ok()
     }
 
+    fn find_kide_files(&self) -> Vec<std::path::PathBuf> {
+        let empty = Vec::new();
+        let roots = self.workspace_roots.lock().ok();
+        let roots = roots.as_deref().unwrap_or(&empty);
+        let mut kide_files = Vec::new();
+        for root in roots {
+            Self::walk_for_kide_files(root, &mut kide_files, 0);
+        }
+        kide_files
+    }
+
+    fn walk_for_kide_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>, depth: usize) {
+        if depth > 10 {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name.starts_with('.') || name == "node_modules" || name == "target" {
+                    continue;
+                }
+                Self::walk_for_kide_files(&path, out, depth + 1);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("kide") {
+                out.push(path);
+            }
+        }
+    }
+
     async fn publish(&self, uri: Url, diagnostics: Vec<Diagnostic>, version: Option<i32>) {
         self.client
             .send_notification::<tower_lsp::lsp_types::notification::PublishDiagnostics>(
@@ -91,7 +125,27 @@ impl Backend {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> jsonrpc::Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> jsonrpc::Result<InitializeResult> {
+        // Capture workspace roots
+        let mut roots = Vec::new();
+        if let Some(folders) = &params.workspace_folders {
+            for folder in folders {
+                if let Ok(path) = folder.uri.to_file_path() {
+                    roots.push(path);
+                }
+            }
+        }
+        if roots.is_empty() {
+            if let Some(root_uri) = &params.root_uri {
+                if let Ok(path) = root_uri.to_file_path() {
+                    roots.push(path);
+                }
+            }
+        }
+        if let Ok(mut wr) = self.workspace_roots.lock() {
+            *wr = roots;
+        }
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -137,6 +191,18 @@ impl LanguageServer for Backend {
         self.client
             .log_message(MessageType::INFO, "kide LSP initialized")
             .await;
+
+        // Scan workspace for all .kide files and publish diagnostics
+        for path in self.find_kide_files() {
+            let Ok(uri) = Url::from_file_path(&path) else {
+                continue;
+            };
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let diagnostics = diagnostics_for_source(&source, &uri);
+            self.publish(uri, diagnostics, None).await;
+        }
     }
 
     async fn shutdown(&self) -> jsonrpc::Result<()> {
@@ -169,8 +235,28 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {
+        // Re-check all open documents
         for (uri, text) in self.snapshot_open_documents() {
             let diagnostics = diagnostics_for_source(&text, &uri);
+            self.publish(uri, diagnostics, None).await;
+        }
+        // Also re-check any workspace .kide files not currently open
+        let open_uris: std::collections::HashSet<Url> = self
+            .snapshot_open_documents()
+            .into_iter()
+            .map(|(uri, _)| uri)
+            .collect();
+        for path in self.find_kide_files() {
+            let Ok(uri) = Url::from_file_path(&path) else {
+                continue;
+            };
+            if open_uris.contains(&uri) {
+                continue;
+            }
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let diagnostics = diagnostics_for_source(&source, &uri);
             self.publish(uri, diagnostics, None).await;
         }
     }
