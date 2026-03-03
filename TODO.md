@@ -12,23 +12,23 @@
 - [x] Arity check: add a shipping-co binding that intentionally mismatches to demo the diagnostic
 - [x] Intent check: add a write→read mismatch to demo `COMMAND_BINDING_INTENT_SUSPICIOUS`
 - [x] Dictionary: add a bound source that violates a forbidden term to demo the diagnostic
-- [ ] Boundary: add a cross-context reference to demo `CONTEXT_BOUNDARY_FORBIDDEN`
+- [x] Boundary: add a cross-context reference to demo `CONTEXT_BOUNDARY_FORBIDDEN`
 - [ ] Explore: warn when two aggregates in different contexts bind to the same file (shared kernel smell)
 - [ ] Explore: detect unused aggregate fields (declared but never referenced)
 
 ## LSP
 
 - [x] Hover support: show aggregate/command/invariant docs on hover
-- [ ] Completion: suggest context names in `forbid`, symbol names from bound files
-- [ ] Rename: rename a command/invariant across the `.kide` file
-- [ ] Semantic tokens: richer highlighting via LSP (complement TextMate grammar)
+- [x] Completion: suggest context names in `forbid`, symbol names from bound files
+- [x] Rename: rename a command/invariant across the `.kide` file
+- [x] Semantic tokens: richer highlighting via LSP (complement TextMate grammar)
 - [ ] Workspace diagnostics: check all `.kide` files, not just the open one
 
 ## Grammar Support
 
-- [ ] Add Go (`tree-sitter-go`) grammar with symbol + boundary queries
-- [ ] Add Python (`tree-sitter-python`) grammar
-- [ ] Add C# (`tree-sitter-c-sharp`) grammar
+- [x] Add Go (`tree-sitter-go`) grammar with symbol + boundary queries
+- [x] Add Python (`tree-sitter-python`) grammar
+- [x] Add C# (`tree-sitter-c-sharp`) grammar
 - [x] Prisma: add `boundary_references` query (currently unsupported)
 
 ## Example: shipping-co
