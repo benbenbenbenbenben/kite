@@ -25,3 +25,14 @@ context IntentDemoContext {
     command updateProfile() bound to "../src/lib/demos/intent_demo.ts" symbol "getProfile"
   }
 }
+
+
+context BoundaryDemoContext {
+  boundary {
+    forbid IntentDemoContext
+  }
+
+  aggregate BoundaryDemo bound to "../src/lib/demos/boundary_demo.ts" symbol "BoundaryDemo" {
+    command crossContextCall() bound to "../src/lib/demos/boundary_demo.ts" symbol "crossContextCall"
+  }
+}

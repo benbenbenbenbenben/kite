@@ -13,6 +13,8 @@ context ObservabilityContext {
     action: String
     actorId: String
     recordedAt: Timestamp
+    severity: Decimal
+    eventDate: Date
     command recordAuditEntry(entityId: String, action: String, actorId: String) bound to "../src/lib/infra/audit.ts" symbol "recordAuditEntry"
     command queryAuditLog(entityId: String) bound to "../src/lib/infra/audit.ts" symbol "queryAuditLog"
     invariant AuditEntriesAreImmutable bound to "../src/lib/infra/audit.ts" symbol "assertAuditEntriesAreImmutable"
