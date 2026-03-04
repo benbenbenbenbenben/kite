@@ -23,6 +23,8 @@
 - [x] Rename: rename a command/invariant across the `.kite` file
 - [x] Semantic tokens: richer highlighting via LSP (complement TextMate grammar)
 - [x] Workspace diagnostics: check all `.kite` files, not just the open one
+- [x] Document outline: Dictionary, Boundary, and Field elements in the symbol tree
+- [x] Fix: spawn diagnostics in background to prevent request pipeline hang
 
 ## Grammar Support
 
@@ -38,6 +40,13 @@
 - [x] Add a second `.kite` file (e.g. `infra.kite`) to test multi-file workflows
 - [x] Add integration test that runs `kite check` on shipping-co as a regression gate
 
+## Testing
+
+- [x] Regression tests: `expected-pass` / `expected-fail` fixture files in `examples/shipping-co/domain/regressions/` assert specific violation codes (`COMMAND_BINDING_ARITY_MISMATCH`, `CONTEXT_BOUNDARY_FORBIDDEN`, `BINDING_SYMBOL_NOT_FOUND`)
+- [x] VS Code integration tests: extension activation + document symbol pipeline tested in real Extension Development Host via `@vscode/test-cli` — run with `cd vscode-kite && npm test`
+- [ ] Add more regression fixtures as new violation types are added
+- [ ] CI: run VS Code integration tests (needs `xvfb-run` or headless Electron)
+
 ## Tooling & CI
 
 - [x] Add `kite fmt` — auto-formatter for `.kite` files
@@ -47,15 +56,17 @@
 
 ## Enriched Diagnostics
 
-- [ ] Include source code snippets in diagnostic messages (e.g. for `COMMAND_BINDING_ARITY_MISMATCH`, show the function signature from the bound source file as a multiline message)
-- [ ] Include clickable file paths in diagnostic messages — VS Code auto-links `path/to/file.rs:42:5` format and `file:///` URIs; test which format feels best
-- [ ] Explore using `codeDescription.href` with `file:///` URIs to link directly from the diagnostic code to the offending source location
+- [ ] Include source code snippets in diagnostic messages (e.g. for `COMMAND_BINDING_ARITY_MISMATCH`, show the function signature from the bound source file as a multiline message) — diagnostic messages support multiline via `\n`, but no markdown
+- [ ] Include clickable file paths in diagnostic messages — VS Code auto-links `path/to/file.rs:42:5` format; test which format feels best in the Problems panel and hover tooltip
+- [ ] Explore using `codeDescription.href` with `file:///` URIs to link directly from the diagnostic code to the offending source location — the LSP already uses `codeDescription` for docs links, could add source file links too
 
 ## Source File Decorations
 
+The goal: make bound source files "aware" of their kite specifications. Similar to how test runners decorate tested code, but for architectural conformance. All features behind `kite.decorations.*` settings flags, defaulting to on.
+
 - [ ] Gutter/margin indicators on bound source files showing kite association status (pass/fail/warning) — similar to test runner coverage indicators
 - [ ] Explore using a small kite icon (custom `gutterIconPath`) for lines referenced by kite bindings, coloured red/amber/green by validation state
-- [ ] Inlay hints on bound source symbols showing the associated kite spec (e.g. `← Order.ship`)
+- [ ] Inlay hints on bound source symbols showing the associated kite spec (e.g. `← Order.ship`) — note: the extension already has an inlay hints provider (`sourceInlayHintsProvider`) that could be extended
 - [ ] Decide: gutter icons vs inlay hints vs both — prototype both and see what feels right
 - [ ] Add a "Find Related Kite Specifications" command (reverse lookup: given a source file + symbol, find all `.kite` entries that bind to it)
 - [ ] Explore CodeLens as an alternative/complement — show "Referenced by: Order.ship (SalesContext)" above bound functions
