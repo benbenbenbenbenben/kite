@@ -313,9 +313,15 @@ pub fn hover_at(
                                 )
                             })
                             .unwrap_or_default();
+                        let desc_line = agg
+                            .description
+                            .as_ref()
+                            .map(|d| format!("\n\n*{}*", unquote(&d.text)))
+                            .unwrap_or_default();
                         let markdown = format!(
-                            "### Aggregate: `{}`\n\nContext: `{}`{}\n\n{} field(s) · {} command(s) · {} invariant(s)",
+                            "### Aggregate: `{}`{}\n\nContext: `{}`{}\n\n{} field(s) · {} command(s) · {} invariant(s)",
                             agg.name.text,
+                            desc_line,
                             context.name.text,
                             binding_info,
                             fields.len(),
@@ -354,9 +360,15 @@ pub fn hover_at(
                                     } else {
                                         String::new()
                                     };
+                                    let desc_line = cmd
+                                        .description
+                                        .as_ref()
+                                        .map(|d| format!("\n\n*{}*", unquote(&d.text)))
+                                        .unwrap_or_default();
                                     let markdown = format!(
-                                        "### Command: `{}`\n\n```\n{}({})\n```\n\nAggregate: `{}` · Context: `{}`{}",
+                                        "### Command: `{}`{}\n\n```\n{}({})\n```\n\nAggregate: `{}` · Context: `{}`{}",
                                         cmd.name.text,
+                                        desc_line,
                                         cmd.name.text,
                                         params.join(", "),
                                         agg.name.text,
@@ -386,9 +398,15 @@ pub fn hover_at(
                                     } else {
                                         String::new()
                                     };
+                                    let desc_line = inv
+                                        .description
+                                        .as_ref()
+                                        .map(|d| format!("\n\n*{}*", unquote(&d.text)))
+                                        .unwrap_or_default();
                                     let markdown = format!(
-                                        "### Invariant: `{}`\n\nAggregate: `{}` · Context: `{}`{}",
+                                        "### Invariant: `{}`{}\n\nAggregate: `{}` · Context: `{}`{}",
                                         inv.name.text,
+                                        desc_line,
                                         agg.name.text,
                                         context.name.text,
                                         binding_info,

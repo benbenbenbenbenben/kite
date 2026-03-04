@@ -246,6 +246,13 @@ fn create_parser(
     language: &str,
     is_tsx: bool,
 ) -> Result<Option<(Parser, tree_sitter::Language)>> {
+    use std::cell::RefCell;
+
+    thread_local! {
+        static ENGINE: RefCell<tree_sitter::wasmtime::Engine> =
+            RefCell::new(tree_sitter::wasmtime::Engine::default());
+    }
+
     let wasm_bytes = if is_tsx && language == "typescript" {
         registry.tsx_wasm_bytes(language)?
     } else {
@@ -256,10 +263,6 @@ fn create_parser(
         return Ok(None);
     };
 
-    let engine = tree_sitter::wasmtime::Engine::default();
-    let mut store = tree_sitter::WasmStore::new(&engine)
-        .map_err(|e| anyhow::anyhow!("failed to create wasm store: {}", e))?;
-
     // For TSX, the WASM module exports tree_sitter_tsx, not tree_sitter_typescript
     let wasm_language_name = if is_tsx && language == "typescript" {
         "tsx"
@@ -267,17 +270,25 @@ fn create_parser(
         language
     };
 
-    let lang = store
-        .load_language(wasm_language_name, &wasm_bytes)
-        .with_context(|| format!("failed to load wasm grammar for '{}'", language))?;
+    let result = ENGINE.with(|engine_cell| {
+        let engine = engine_cell.borrow();
+        let mut store = tree_sitter::WasmStore::new(&engine)
+            .map_err(|e| anyhow::anyhow!("failed to create wasm store: {}", e))?;
 
-    let mut parser = Parser::new();
-    parser
-        .set_wasm_store(store)
-        .map_err(|e| anyhow::anyhow!("failed to set wasm store: {}", e))?;
-    parser.set_language(&lang)?;
+        let lang = store
+            .load_language(wasm_language_name, &wasm_bytes)
+            .with_context(|| format!("failed to load wasm grammar for '{}'", language))?;
 
-    Ok(Some((parser, lang)))
+        let mut parser = Parser::new();
+        parser
+            .set_wasm_store(store)
+            .map_err(|e| anyhow::anyhow!("failed to set wasm store: {}", e))?;
+        parser.set_language(&lang)?;
+
+        Ok(Some((parser, lang)))
+    });
+
+    result
 }
 
 #[cfg(target_arch = "wasm32")]

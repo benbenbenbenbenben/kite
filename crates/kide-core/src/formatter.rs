@@ -39,6 +39,9 @@ pub fn format_source(source: &str) -> anyhow::Result<String> {
                 }
                 ContextElement::Aggregate(agg) => {
                     out.push_str(&format!("  aggregate {}", agg.name.text));
+                    if let Some(desc) = &agg.description {
+                        out.push_str(&format!(" {}", desc.text));
+                    }
                     if let Some(binding) = &agg.binding {
                         format_binding(&mut out, binding);
                     }
@@ -61,11 +64,17 @@ pub fn format_source(source: &str) -> anyhow::Result<String> {
                                     cmd.name.text,
                                     params.join(", ")
                                 ));
+                                if let Some(desc) = &cmd.description {
+                                    out.push_str(&format!(" {}", desc.text));
+                                }
                                 format_rule_body(&mut out, &cmd.body);
                                 out.push('\n');
                             }
                             AggregateMember::Invariant(inv) => {
                                 out.push_str(&format!("    invariant {}", inv.name.text));
+                                if let Some(desc) = &inv.description {
+                                    out.push_str(&format!(" {}", desc.text));
+                                }
                                 format_rule_body(&mut out, &inv.body);
                                 out.push('\n');
                             }

@@ -75,6 +75,7 @@ pub struct Aggregate {
     #[text("aggregate")]
     _aggregate_kw: (),
     pub name: Spanned<Identifier>,
+    pub description: Option<StringLiteral>,
     pub binding: Option<Binding>,
     #[text("{")]
     _open: (),
@@ -133,6 +134,7 @@ pub struct Command {
     pub params: Vec<Parameter>,
     #[text(")")]
     _close: (),
+    pub description: Option<StringLiteral>,
     pub body: RuleBody,
 }
 
@@ -141,6 +143,7 @@ pub struct Invariant {
     #[text("invariant")]
     _invariant_kw: (),
     pub name: Spanned<Identifier>,
+    pub description: Option<StringLiteral>,
     pub body: RuleBody,
 }
 
