@@ -76,6 +76,8 @@ pub const DOCS_AGGREGATE_SHARED_BINDING: &str =
 pub const CODE_AGGREGATE_FIELD_UNUSED: &str = "AGGREGATE_FIELD_UNUSED";
 pub const DOCS_AGGREGATE_FIELD_UNUSED: &str =
     "https://docs.kide.dev/diagnostics/aggregate-field-unused";
+pub const CODE_DUPLICATE_CONTEXT: &str = "DUPLICATE_CONTEXT";
+pub const DOCS_DUPLICATE_CONTEXT: &str = "https://docs.kide.dev/diagnostics/duplicate-context";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViolationSeverity {
@@ -149,10 +151,73 @@ pub fn check_source_in_dir(source: &str, base_dir: &Path) -> Result<CheckReport>
 }
 
 pub fn check_file(path: &Path) -> Result<CheckReport> {
+    if path.is_dir() {
+        return check_directory(path);
+    }
     let source = std::fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
     let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
     check_source_in_dir(&source, base_dir)
+}
+
+/// Check all `.kide` files in a directory as one combined program.
+/// Detects duplicate context names across files.
+pub fn check_directory(dir: &Path) -> Result<CheckReport> {
+    let mut kide_files: Vec<std::path::PathBuf> = Vec::new();
+    for entry in std::fs::read_dir(dir)
+        .with_context(|| format!("failed to read directory {}", dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "kide") && path.is_file() {
+            kide_files.push(path);
+        }
+    }
+    kide_files.sort();
+
+    if kide_files.is_empty() {
+        anyhow::bail!("no .kide files found in {}", dir.display());
+    }
+
+    // Parse each file and collect (filename, contexts) tuples
+    let mut all_contexts: Vec<kide_parser::grammar::Context> = Vec::new();
+    let mut context_origins: Vec<(String, String)> = Vec::new(); // (context_name, file_name)
+    let mut violations = Vec::new();
+
+    for kide_file in &kide_files {
+        let source = std::fs::read_to_string(kide_file)
+            .with_context(|| format!("failed to read {}", kide_file.display()))?;
+        let ast = kide_parser::parse(&source)?;
+        let file_name = kide_file
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        for context in ast.contexts {
+            context_origins.push((context.name.text.clone(), file_name.clone()));
+            all_contexts.push(context);
+        }
+    }
+
+    // Detect duplicate context names across files
+    detect_duplicate_contexts(&context_origins, &mut violations);
+
+    // Build a combined program and validate
+    let combined = kide_parser::Program {
+        contexts: all_contexts,
+    };
+
+    let grammar_root = resolve_grammar_root(dir)?;
+    let grammar_registry = GrammarRegistry::load(&grammar_root)?;
+    let adapter_runtime = AdapterRuntimeEngine::new(&grammar_registry, dir);
+    let mut program_violations =
+        validate_program(&combined, dir, &grammar_registry, &adapter_runtime)?;
+    violations.append(&mut program_violations);
+
+    Ok(CheckReport {
+        contexts: combined.contexts.len(),
+        violations,
+    })
 }
 
 pub fn definition_at(
@@ -892,6 +957,40 @@ fn bindings_in_context(context: &DomainContext) -> Vec<&Binding> {
         }
     }
     bindings
+}
+
+fn detect_duplicate_contexts(
+    context_origins: &[(String, String)],
+    violations: &mut Vec<Violation>,
+) {
+    let mut seen: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for (name, file) in context_origins {
+        seen.entry(name.as_str()).or_default().push(file.as_str());
+    }
+    for (name, files) in &seen {
+        if files.len() > 1 {
+            // Deduplicate file names in case same file has the context twice
+            let mut unique_files: Vec<&str> = files.clone();
+            unique_files.sort();
+            unique_files.dedup();
+            if unique_files.len() > 1 {
+                violations.push(Violation {
+                    severity: ViolationSeverity::Error,
+                    code: CODE_DUPLICATE_CONTEXT,
+                    message: format!(
+                        "context '{}' is defined in multiple files: {}",
+                        name,
+                        unique_files.join(", ")
+                    ),
+                    hint: Some(
+                        "each context should be defined in exactly one .kide file".to_string(),
+                    ),
+                    docs_uri: Some(DOCS_DUPLICATE_CONTEXT),
+                    span: None,
+                });
+            }
+        }
+    }
 }
 
 fn detect_shared_bindings(

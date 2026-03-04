@@ -14,9 +14,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Parse and validate a .kide spec file.
+    /// Parse and validate .kide spec files (single file or directory).
     Check {
-        #[arg(default_value = "domain/main.kide")]
+        #[arg(default_value = "domain")]
         file: PathBuf,
     },
     /// Auto-format a .kide spec file.
