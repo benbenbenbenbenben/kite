@@ -1237,7 +1237,7 @@ mod tests {
                 start_column: 30,
                 end_line: 4,
                 end_column: 49,
-            }),
+            }), source_span: None, kite_spec: None, 
         };
 
         let range = range_for_violation(&violation);
@@ -1365,7 +1365,7 @@ context TestContext {
                 start_column: 1,
                 end_line: 1,
                 end_column: 2,
-            }),
+            }), source_span: None, kite_spec: None, 
         };
 
         let diagnostic = diagnostic_from_violation(violation);
@@ -1399,7 +1399,7 @@ context TestContext {
                 start_column: 1,
                 end_line: 1,
                 end_column: 2,
-            }),
+            }), source_span: None, kite_spec: None, 
         };
 
         let diagnostic = diagnostic_from_violation(violation);
@@ -1458,7 +1458,7 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 7,
-            }),
+            }), source_span: None, kite_spec: None, 
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic.clone()]);
@@ -1493,7 +1493,7 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 7,
-            }),
+            }), source_span: None, kite_spec: None, 
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic]);
@@ -1527,7 +1527,7 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 14,
-            }),
+            }), source_span: None, kite_spec: None, 
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic.clone()]);
@@ -1560,7 +1560,7 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 14,
-            }),
+            }), source_span: None, kite_spec: None, 
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic]);
@@ -1581,7 +1581,7 @@ context SalesContext {
                 start_column: 20,
                 end_line: 2,
                 end_column: 34,
-            }),
+            }), source_span: None, kite_spec: None, 
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic.clone()]);
@@ -1617,7 +1617,7 @@ context SalesContext {
                     start_column: 10,
                     end_line: 1,
                     end_column: 25,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1631,7 +1631,7 @@ context SalesContext {
                     start_column: 3,
                     end_line: 2,
                     end_column: 7,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1644,7 +1644,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 3,
                     end_column: 13,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
         ];
 
@@ -1703,7 +1703,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: line,
                     end_column: 10,
-                }),
+                }), source_span: None, kite_spec: None, 
             })
         })
         .collect::<Vec<_>>();
@@ -1759,7 +1759,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 1,
                     end_column: 2,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1773,7 +1773,7 @@ context SalesContext {
                     start_column: 3,
                     end_line: 2,
                     end_column: 7,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
         ];
 
@@ -1802,7 +1802,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 1,
                     end_column: 2,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1816,7 +1816,7 @@ context SalesContext {
                     start_column: 3,
                     end_line: 2,
                     end_column: 7,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1829,7 +1829,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 3,
                     end_column: 13,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1842,7 +1842,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 4,
                     end_column: 4,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1855,7 +1855,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 5,
                     end_column: 4,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1868,7 +1868,7 @@ context SalesContext {
                     start_column: 1,
                     end_line: 6,
                     end_column: 4,
-                }),
+                }), source_span: None, kite_spec: None, 
             }),
         ];
 
