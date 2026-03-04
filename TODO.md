@@ -44,3 +44,18 @@
 - [x] Add `kite init` — scaffold a new domain file from an existing codebase
 - [x] CI: run `cargo test` + `kite check examples/` on every PR
 - [ ] Publish VS Code extension to marketplace (defer, do not do this)
+
+## Enriched Diagnostics
+
+- [ ] Include source code snippets in diagnostic messages (e.g. for `COMMAND_BINDING_ARITY_MISMATCH`, show the function signature from the bound source file as a multiline message)
+- [ ] Include clickable file paths in diagnostic messages — VS Code auto-links `path/to/file.rs:42:5` format and `file:///` URIs; test which format feels best
+- [ ] Explore using `codeDescription.href` with `file:///` URIs to link directly from the diagnostic code to the offending source location
+
+## Source File Decorations
+
+- [ ] Gutter/margin indicators on bound source files showing kite association status (pass/fail/warning) — similar to test runner coverage indicators
+- [ ] Explore using a small kite icon (custom `gutterIconPath`) for lines referenced by kite bindings, coloured red/amber/green by validation state
+- [ ] Inlay hints on bound source symbols showing the associated kite spec (e.g. `← Order.ship`)
+- [ ] Decide: gutter icons vs inlay hints vs both — prototype both and see what feels right
+- [ ] Add a "Find Related Kite Specifications" command (reverse lookup: given a source file + symbol, find all `.kite` entries that bind to it)
+- [ ] Explore CodeLens as an alternative/complement — show "Referenced by: Order.ship (SalesContext)" above bound functions
