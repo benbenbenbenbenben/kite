@@ -170,7 +170,8 @@ pub fn check_source_in_dir(source: &str, base_dir: &Path) -> Result<CheckReport>
     let grammar_root = resolve_grammar_root(base_dir)?;
     let grammar_registry = GrammarRegistry::load(&grammar_root)?;
     let adapter_runtime = AdapterRuntimeEngine::new(&grammar_registry, base_dir);
-    let (violations, bindings) = validate_program(&ast, base_dir, &grammar_registry, &adapter_runtime)?;
+    let (violations, bindings) =
+        validate_program(&ast, base_dir, &grammar_registry, &adapter_runtime)?;
     Ok(CheckReport {
         contexts: ast.contexts.len(),
         violations,
@@ -972,12 +973,22 @@ fn validate_program(
                             let target_path = resolve_bound_path(base_dir, &target);
                             let symbol = binding.symbol.as_ref().map(|s| unquote(&s.symbol.text));
                             let source_span = if target_path.exists() {
-                                if let Some(language) = adapter_runtime.language_for_path(&target_path) {
-                                    if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
+                                if let Some(language) =
+                                    adapter_runtime.language_for_path(&target_path)
+                                {
+                                    if let Ok(Some(query)) =
+                                        grammar_registry.query_for(&language, "symbol_exists")
+                                    {
                                         if let Ok(source) = std::fs::read_to_string(&target_path) {
                                             if let Some(s) = &symbol {
                                                 adapter_runtime
-                                                    .find_symbol_span(&language, &target_path, &source, s, &query)
+                                                    .find_symbol_span(
+                                                        &language,
+                                                        &target_path,
+                                                        &source,
+                                                        s,
+                                                        &query,
+                                                    )
                                                     .ok()
                                                     .flatten()
                                             } else {
@@ -1012,12 +1023,22 @@ fn validate_program(
                             let target_path = resolve_bound_path(base_dir, &target);
                             let symbol = binding.symbol.as_ref().map(|s| unquote(&s.symbol.text));
                             let source_span = if target_path.exists() {
-                                if let Some(language) = adapter_runtime.language_for_path(&target_path) {
-                                    if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
+                                if let Some(language) =
+                                    adapter_runtime.language_for_path(&target_path)
+                                {
+                                    if let Ok(Some(query)) =
+                                        grammar_registry.query_for(&language, "symbol_exists")
+                                    {
                                         if let Ok(source) = std::fs::read_to_string(&target_path) {
                                             if let Some(s) = &symbol {
                                                 adapter_runtime
-                                                    .find_symbol_span(&language, &target_path, &source, s, &query)
+                                                    .find_symbol_span(
+                                                        &language,
+                                                        &target_path,
+                                                        &source,
+                                                        s,
+                                                        &query,
+                                                    )
                                                     .ok()
                                                     .flatten()
                                             } else {
@@ -1037,7 +1058,10 @@ fn validate_program(
                             };
 
                             bindings.push(BoundSpec {
-                                kite_spec: format!("{}.{}", aggregate.name.text, invariant.name.text),
+                                kite_spec: format!(
+                                    "{}.{}",
+                                    aggregate.name.text, invariant.name.text
+                                ),
                                 target_path,
                                 symbol,
                                 kite_file: PathBuf::new(),
@@ -1121,7 +1145,9 @@ fn detect_duplicate_contexts(
                         "each context should be defined in exactly one .kite file".to_string(),
                     ),
                     docs_uri: Some(DOCS_DUPLICATE_CONTEXT),
-                    span: None, source_span: None, kite_spec: None,
+                    span: None,
+                    source_span: None,
+                    kite_spec: None,
                 });
             }
         }
@@ -1178,7 +1204,7 @@ fn detect_shared_bindings(
                     "aggregate '{}' in context '{}' binds to '{}' which is also bound in context(s) {}",
                     agg,
                     ctx,
-                    path.display(),
+                    display_relative(path, base_dir),
                     others.join(", ")
                 ),
                 hint: Some(
@@ -1209,12 +1235,13 @@ fn validate_context(
     for element in &context.elements {
         match element {
             ContextElement::Dictionary(dictionary) => {
-                validate_dictionary(context, dictionary, &bound_sources, violations)
+                validate_dictionary(context, dictionary, &bound_sources, base_dir, violations)
             }
             ContextElement::Boundary(boundary) => validate_boundary(
                 context,
                 boundary,
                 &bound_sources,
+                base_dir,
                 adapter_runtime,
                 violations,
             ),
@@ -1315,6 +1342,7 @@ fn validate_dictionary(
     context: &DomainContext,
     dictionary: &Dictionary,
     bound_sources: &[BoundSource],
+    base_dir: &Path,
     violations: &mut Vec<Violation>,
 ) {
     let mut seen_terms = HashSet::new();
@@ -1333,7 +1361,9 @@ fn validate_dictionary(
                 ),
                 hint: Some(format!("remove or merge duplicate key '{}'", term)),
                 docs_uri: Some(DOCS_DICTIONARY_DUPLICATE_KEY),
-                span: span_for_dictionary_entry(context, entry, None), source_span: None, kite_spec: None,
+                span: span_for_dictionary_entry(context, entry, None),
+                source_span: None,
+                kite_spec: None,
             });
         }
         for bound_source in bound_sources {
@@ -1347,7 +1377,7 @@ fn validate_dictionary(
                     message: format!(
                         "dictionary term '{}' is forbidden but appears in '{}'",
                         term,
-                        bound_source.path.display()
+                        display_relative(&bound_source.path, base_dir)
                     ),
                     hint: Some(format!("remove '{}' from bound source files", term)),
                     docs_uri: Some(DOCS_DICTIONARY_TERM_FORBIDDEN),
@@ -1356,7 +1386,8 @@ fn validate_dictionary(
                         entry,
                         Some(bound_source.fallback_span),
                     ),
-                    source_span: None, kite_spec: None,
+                    source_span: None,
+                    kite_spec: None,
                 }),
                 DictValue::Text(preferred) => {
                     let preferred = unquote(&preferred.text);
@@ -1366,7 +1397,7 @@ fn validate_dictionary(
                         message: format!(
                             "dictionary term '{}' appears in '{}' but preferred term is '{}'",
                             term,
-                            bound_source.path.display(),
+                            display_relative(&bound_source.path, base_dir),
                             preferred
                         ),
                         hint: Some(format!("use '{}' instead of '{}'", preferred, term)),
@@ -1376,7 +1407,8 @@ fn validate_dictionary(
                             entry,
                             Some(bound_source.fallback_span),
                         ),
-                        source_span: None, kite_spec: None,
+                        source_span: None,
+                        kite_spec: None,
                     });
                 }
             }
@@ -1388,6 +1420,7 @@ fn validate_boundary(
     context: &DomainContext,
     boundary: &Boundary,
     bound_sources: &[BoundSource],
+    base_dir: &Path,
     adapter_runtime: &AdapterRuntimeEngine<'_>,
     violations: &mut Vec<Violation>,
 ) {
@@ -1412,7 +1445,8 @@ fn validate_boundary(
                 )),
                 docs_uri: Some(DOCS_CONTEXT_BOUNDARY_DUPLICATE_FORBID),
                 span: span_for_boundary_entry(context, entry),
-                source_span: None, kite_spec: None,
+                source_span: None,
+                kite_spec: None,
             });
         }
         if forbidden_context == current_context {
@@ -1429,7 +1463,8 @@ fn validate_boundary(
                 )),
                 docs_uri: Some(DOCS_CONTEXT_BOUNDARY_SELF_FORBID),
                 span: span_for_boundary_entry(context, entry),
-                source_span: None, kite_spec: None,
+                source_span: None,
+                kite_spec: None,
             });
         }
         for bound_source in bound_sources {
@@ -1442,7 +1477,7 @@ fn validate_boundary(
                 message: format!(
                     "boundary forbids context '{}' but it appears in '{}'",
                     forbidden_context,
-                    bound_source.path.display()
+                    display_relative(&bound_source.path, base_dir)
                 ),
                 hint: Some(format!(
                     "remove references to '{}' from files bound in this context",
@@ -1450,7 +1485,8 @@ fn validate_boundary(
                 )),
                 docs_uri: Some(DOCS_CONTEXT_BOUNDARY_FORBIDDEN),
                 span: span_for_boundary_entry(context, entry),
-                source_span: None, kite_spec: None,
+                source_span: None,
+                kite_spec: None,
             });
         }
     }
@@ -1721,9 +1757,7 @@ fn validate_command_binding_intent(
         }
         message.push_str(&format!(
             "\n\nSource: {}:{}:{}",
-            target_path.display(),
-            span.start_line,
-            span.start_column
+            target, span.start_line, span.start_column
         ));
     }
 
@@ -1740,7 +1774,6 @@ fn validate_command_binding_intent(
         source_span,
         kite_spec: None,
     }.with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)));
-
 
     Ok(())
 }
@@ -1806,26 +1839,26 @@ fn validate_command_binding_arity(
         }
         message.push_str(&format!(
             "\n\nSource: {}:{}:{}",
-            target_path.display(),
-            span.start_line,
-            span.start_column
+            target, span.start_line, span.start_column
         ));
     }
 
-    violations.push(Violation {
-        severity: ViolationSeverity::Error,
-        code: CODE_COMMAND_BINDING_ARITY_MISMATCH,
-        message,
-        hint: Some(format!(
+    violations.push(
+        Violation {
+            severity: ViolationSeverity::Error,
+            code: CODE_COMMAND_BINDING_ARITY_MISMATCH,
+            message,
+            hint: Some(format!(
             "adjust command parameters to {} or bind to a {} symbol that accepts {} parameter(s)",
             expected_arity, language_name, actual_arity
         )),
-        docs_uri: Some(DOCS_COMMAND_BINDING_ARITY_MISMATCH),
-        span: Some(span_from_symbol_binding(symbol_binding)),
-        source_span,
-        kite_spec: None,
-    }.with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)));
-
+            docs_uri: Some(DOCS_COMMAND_BINDING_ARITY_MISMATCH),
+            span: Some(span_from_symbol_binding(symbol_binding)),
+            source_span,
+            kite_spec: None,
+        }
+        .with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)),
+    );
 
     Ok(())
 }
@@ -1865,44 +1898,48 @@ fn validate_binding(
         violations.push(Violation {
             severity: ViolationSeverity::Error,
             code: CODE_BINDING_FILE_NOT_FOUND,
-            message: format!("bound file '{}' does not exist", target_path.display()),
+            message: format!("bound file '{}' does not exist", target),
             hint: Some("create the file or update the bound path".to_owned()),
             docs_uri: Some(DOCS_BINDING_FILE_NOT_FOUND),
-            span: Some(span_from_binding_target(binding)), source_span: None, kite_spec: None,
+            span: Some(span_from_binding_target(binding)),
+            source_span: None,
+            kite_spec: None,
         });
-        } else if let Ok(content) = std::fs::read_to_string(&target_path) {
+    } else if let Ok(content) = std::fs::read_to_string(&target_path) {
         if content.trim().is_empty() {
             violations.push(Violation {
                 severity: ViolationSeverity::Warning,
                 code: CODE_BINDING_FILE_EMPTY,
                 message: format!(
                     "bound file '{}' exists but is empty; implementation may be missing",
-                    target_path.display()
+                    target
                 ),
                 hint: Some("add implementation to the bound file or remove the binding".to_owned()),
                 docs_uri: Some(DOCS_BINDING_FILE_EMPTY),
-                span: Some(span_from_binding_target(binding)), source_span: None, kite_spec: None,
+                span: Some(span_from_binding_target(binding)),
+                source_span: None,
+                kite_spec: None,
             });
         }
-        }
+    }
 
-        validate_binding_hash(binding, &target_path, target_exists, violations)?;
+    validate_binding_hash(binding, &target_path, target_exists, base_dir, violations)?;
 
-        if binding.symbol.is_none() {
+    if binding.symbol.is_none() {
         violations.push(Violation {
             severity: ViolationSeverity::Information,
             code: CODE_BINDING_SYMBOL_MISSING,
             message: format!(
                 "binding to '{}' has no symbol clause; consider adding one for precise verification",
-                target_path.display()
+                target
             ),
             hint: Some("add a 'symbol' clause to bind to a specific declaration".to_owned()),
             docs_uri: Some(DOCS_BINDING_SYMBOL_MISSING),
             span: Some(span_from_binding_target(binding)), source_span: None, kite_spec: None,
         });
-        }
+    }
 
-        if let Some(symbol_binding) = &binding.symbol {
+    if let Some(symbol_binding) = &binding.symbol {
         let symbol = unquote(&symbol_binding.symbol.text);
 
         if !target_exists {
@@ -1911,12 +1948,13 @@ fn validate_binding(
                 code: CODE_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY,
                 message: format!(
                     "symbol '{}' could not be verified because bound file '{}' is missing",
-                    symbol,
-                    target_path.display()
+                    symbol, target
                 ),
                 hint: Some("fix the missing bound file first, then re-run verification".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY),
-                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
+                span: Some(span_from_symbol_binding(symbol_binding)),
+                source_span: None,
+                kite_spec: None,
             });
             return Ok(());
         }
@@ -1928,12 +1966,13 @@ fn validate_binding(
                 code: CODE_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE,
                 message: format!(
                     "symbol '{}' cannot be verified for unsupported file '{}'",
-                    symbol,
-                    target_path.display()
+                    symbol, target
                 ),
                 hint: Some("use a supported language file or remove the symbol clause".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE),
-                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
+                span: Some(span_from_symbol_binding(symbol_binding)),
+                source_span: None,
+                kite_spec: None,
             });
             return Ok(());
         };
@@ -1948,7 +1987,9 @@ fn validate_binding(
                 ),
                 hint: Some("register the language grammar in grammars/grammars.toml".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE),
-                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
+                span: Some(span_from_symbol_binding(symbol_binding)),
+                source_span: None,
+                kite_spec: None,
             });
             return Ok(());
         }
@@ -2004,17 +2045,11 @@ fn validate_binding(
                 .find_symbol_span(&language, &target_path, &source, &symbol, &query)
                 .ok()
                 .flatten();
-            let mut message = format!(
-                "symbol '{}' was not found in '{}'",
-                symbol,
-                target_path.display()
-            );
+            let mut message = format!("symbol '{}' was not found in '{}'", symbol, target);
             if let Some(span) = source_span {
                 message.push_str(&format!(
                     "\n\nSource: {}:{}:{}",
-                    target_path.display(),
-                    span.start_line,
-                    span.start_column
+                    target, span.start_line, span.start_column
                 ));
             }
             violations.push(Violation {
@@ -2027,9 +2062,8 @@ fn validate_binding(
                 source_span,
                 kite_spec: None,
             });
-
         }
-        }
+    }
     Ok(())
 }
 
@@ -2037,6 +2071,7 @@ fn validate_binding_hash(
     binding: &Binding,
     target_path: &Path,
     target_exists: bool,
+    base_dir: &Path,
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     let Some(hash_binding) = &binding.hash else {
@@ -2054,7 +2089,9 @@ fn validate_binding_hash(
             ),
             hint: Some("use format 'hash \"<64 lowercase hex SHA-256>\"'".to_owned()),
             docs_uri: Some(DOCS_BINDING_HASH_INVALID_FORMAT),
-            span: span_for_hash_binding(binding, hash_binding), source_span: None, kite_spec: None,
+            span: span_for_hash_binding(binding, hash_binding),
+            source_span: None,
+            kite_spec: None,
         });
         return Ok(());
     }
@@ -2075,7 +2112,7 @@ fn validate_binding_hash(
         code: CODE_BINDING_HASH_MISMATCH,
         message: format!(
             "hash mismatch for '{}': expected '{}', computed '{}'",
-            target_path.display(),
+            display_relative(target_path, base_dir),
             expected_hash,
             actual_hash
         ),
@@ -2084,7 +2121,9 @@ fn validate_binding_hash(
                 .to_owned(),
         ),
         docs_uri: Some(DOCS_BINDING_HASH_MISMATCH),
-        span: span_for_hash_binding(binding, hash_binding), source_span: None, kite_spec: None,
+        span: span_for_hash_binding(binding, hash_binding),
+        source_span: None,
+        kite_spec: None,
     });
     Ok(())
 }
@@ -2180,6 +2219,12 @@ fn resolve_bound_path(base_dir: &Path, target: &str) -> PathBuf {
     } else {
         base_dir.join(target_path)
     }
+}
+
+fn display_relative<'a>(path: &'a Path, base_dir: &Path) -> std::borrow::Cow<'a, str> {
+    path.strip_prefix(base_dir)
+        .unwrap_or(path)
+        .to_string_lossy()
 }
 
 fn unquote(input: &str) -> String {
