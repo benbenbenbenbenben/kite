@@ -52,7 +52,7 @@
 - [x] Add `kite fmt` — auto-formatter for `.kite` files
 - [x] Add `kite init` — scaffold a new domain file from an existing codebase
 - [x] CI: run `cargo test` + `kite check examples/` on every PR
-- [ ] Publish VS Code extension to marketplace (defer, do not do this)
+- [-] Publish VS Code extension to marketplace (defer, do not do this)
 
 ## Enriched Diagnostics
 
