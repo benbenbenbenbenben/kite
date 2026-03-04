@@ -215,37 +215,15 @@ Build scripts:
 
 `build-wasm.sh` expects `clang`/`ar` and WASI headers (`wasi-libc`); override via `WASI_INCLUDE`, `CC_wasm32_wasip1`, `AR_wasm32_wasip1`, and `CFLAGS_wasm32_wasip1` if needed.
 
-### VS Code extension
-
-`vscode-kite/` contains the extension that launches `kite start-lsp`.
-
-- Debug config: `.vscode/launch.json`
-- Build/watch tasks: `.vscode/tasks.json`
-
-Run extension compile manually:
-
-```bash
-cd vscode-kite
-npm install
-npm run compile
-```
-
-### Grammar registry
-
-Kite loads Tree-sitter query mappings from `grammars/<language>/manifest.toml`.
-
-- Rust grammar assets are vendored in `grammars/rust/tree-sitter-rust-0.24.0`.
-- `grammars/rust/queries/symbol_exists.scm` is used for symbol existence checks.
-- `grammars/typescript/queries/symbol_exists.scm` is used for TypeScript/TSX symbol existence checks.
-- Prisma grammar assets are vendored in `grammars/prisma/tree-sitter-prisma-1.6.0`.
-
 ---
 
 ## Contributing
 
-We are currently expanding support for new languages via the **Grammar Registry**.
+We are currently expanding support for new languages and improving our editor integration.
 
-To add support for a new language (e.g., Go, Python, C#):
+### Adding Language Support
+
+Kite uses a data-driven **Grammar Registry** to support different programming languages. To add support for a new language (e.g., Go, Python, C#):
 
 1. **Add the Grammar**: Place the `tree-sitter-<lang>.wasm` file in `grammars/<lang>/`.
 2. **Define the Manifest**: Create `grammars/<lang>/manifest.toml` declaring the extensions and query paths.
@@ -253,6 +231,18 @@ To add support for a new language (e.g., Go, Python, C#):
    * `symbol_exists.scm`: A Tree-sitter query that captures the `@name` of declarations (classes, functions, etc.).
    * `boundary_references`: (Optional) A query in the manifest or a separate file that captures `@reference` tokens for architectural boundary enforcement.
 
-Check out the existing [Rust](grammars/rust/) or [TypeScript](grammars/typescript/) definitions for examples.
+Kite automatically loads these assets at runtime. Check out the existing [Rust](grammars/rust/) or [TypeScript](grammars/typescript/) definitions for reference.
+
+### VS Code Extension
+
+The `vscode-kite/` directory contains the extension that launches `kite start-lsp`.
+
+- **Development**: Use the provided `.vscode/launch.json` and `.vscode/tasks.json` to debug and build.
+- **Manual Compilation**:
+  ```bash
+  cd vscode-kite
+  npm install
+  npm run compile
+  ```
 
 **License**: MIT
