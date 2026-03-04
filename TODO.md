@@ -54,6 +54,15 @@
 - [x] CI: run `cargo test` + `kite check examples/` on every PR
 - [-] Publish VS Code extension to marketplace (defer, do not do this)
 
+## CLI & Reporting
+
+- [ ] Improve CLI text output to be more attractive and readable (richer formatting, clearer hierarchy)
+- [ ] Add `--format` flag to `kite check` for multiple reporting formats:
+  - `human` (default, enhanced text)
+  - `tap` (Test Anything Protocol)
+  - `ctrf` (Common Test Report Format JSON)
+  - `junit` (JUnit XML)
+
 ## Enriched Diagnostics
 
 - [x] Include source code snippets in diagnostic messages (e.g. for `COMMAND_BINDING_ARITY_MISMATCH`, show the function signature from the bound source file as a multiline message) — diagnostic messages support multiline via `\n`, but no markdown
