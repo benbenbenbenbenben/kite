@@ -140,7 +140,7 @@ Kite is part of the **kodus ecosystem**, a suite of tools designed for high-assu
 * **Kodus**: The secure server runtime (Home).
 * **Kettu**: The agile, WASM-native implementation language (Fox).
 * **Karu**: The strict security and authorization policy language (Bear).
-* **Kite**: The structural domain and architecture verifier (Sky).
+* **Kite**: The structural domain and architecture verifier.
 
 *(Note: Kite works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)*
 
