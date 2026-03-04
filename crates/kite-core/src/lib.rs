@@ -112,6 +112,22 @@ pub struct Violation {
     pub hint: Option<String>,
     pub docs_uri: Option<&'static str>,
     pub span: Option<ViolationSpan>,
+    /// Optional span in the bound source file (not the .kite file)
+    pub source_span: Option<ViolationSpan>,
+    /// Optional name of the kite specification element (e.g. "Order.ship")
+    pub kite_spec: Option<String>,
+}
+
+impl Violation {
+    pub fn with_source_span(mut self, source_span: Option<ViolationSpan>) -> Self {
+        self.source_span = source_span;
+        self
+    }
+
+    pub fn with_kite_spec(mut self, kite_spec: impl Into<String>) -> Self {
+        self.kite_spec = Some(kite_spec.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -986,7 +1002,7 @@ fn detect_duplicate_contexts(
                         "each context should be defined in exactly one .kite file".to_string(),
                     ),
                     docs_uri: Some(DOCS_DUPLICATE_CONTEXT),
-                    span: None,
+                    span: None, source_span: None, kite_spec: None,
                 });
             }
         }
@@ -1051,6 +1067,7 @@ fn detect_shared_bindings(
                 ),
                 docs_uri: Some(DOCS_AGGREGATE_SHARED_BINDING),
                 span: Some(*span),
+                source_span: None, kite_spec: None,
             });
         }
     }
@@ -1197,7 +1214,7 @@ fn validate_dictionary(
                 ),
                 hint: Some(format!("remove or merge duplicate key '{}'", term)),
                 docs_uri: Some(DOCS_DICTIONARY_DUPLICATE_KEY),
-                span: span_for_dictionary_entry(context, entry, None),
+                span: span_for_dictionary_entry(context, entry, None), source_span: None, kite_spec: None,
             });
         }
         for bound_source in bound_sources {
@@ -1220,6 +1237,7 @@ fn validate_dictionary(
                         entry,
                         Some(bound_source.fallback_span),
                     ),
+                    source_span: None, kite_spec: None,
                 }),
                 DictValue::Text(preferred) => {
                     let preferred = unquote(&preferred.text);
@@ -1239,6 +1257,7 @@ fn validate_dictionary(
                             entry,
                             Some(bound_source.fallback_span),
                         ),
+                        source_span: None, kite_spec: None,
                     });
                 }
             }
@@ -1274,6 +1293,7 @@ fn validate_boundary(
                 )),
                 docs_uri: Some(DOCS_CONTEXT_BOUNDARY_DUPLICATE_FORBID),
                 span: span_for_boundary_entry(context, entry),
+                source_span: None, kite_spec: None,
             });
         }
         if forbidden_context == current_context {
@@ -1290,6 +1310,7 @@ fn validate_boundary(
                 )),
                 docs_uri: Some(DOCS_CONTEXT_BOUNDARY_SELF_FORBID),
                 span: span_for_boundary_entry(context, entry),
+                source_span: None, kite_spec: None,
             });
         }
         for bound_source in bound_sources {
@@ -1310,6 +1331,7 @@ fn validate_boundary(
                 )),
                 docs_uri: Some(DOCS_CONTEXT_BOUNDARY_FORBIDDEN),
                 span: span_for_boundary_entry(context, entry),
+                source_span: None, kite_spec: None,
             });
         }
     }
@@ -1418,6 +1440,7 @@ fn validate_aggregate(
     for member in &aggregate.members {
         match member {
             AggregateMember::Command(command) => validate_command(
+                &aggregate.name.text,
                 command,
                 base_dir,
                 grammar_registry,
@@ -1425,6 +1448,7 @@ fn validate_aggregate(
                 violations,
             )?,
             AggregateMember::Invariant(invariant) => validate_invariant(
+                &aggregate.name.text,
                 invariant,
                 base_dir,
                 grammar_registry,
@@ -1464,7 +1488,7 @@ fn validate_aggregate(
                         field_name
                     )),
                     docs_uri: Some(DOCS_AGGREGATE_FIELD_UNUSED),
-                    span: None,
+                    span: None, source_span: None, kite_spec: None,
                 });
             }
         }
@@ -1474,6 +1498,7 @@ fn validate_aggregate(
 }
 
 fn validate_command(
+    aggregate_name: &str,
     command: &Command,
     base_dir: &Path,
     grammar_registry: &GrammarRegistry,
@@ -1481,7 +1506,15 @@ fn validate_command(
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     if let RuleBody::Binding(binding) = &command.body {
-        validate_command_binding_intent(command, binding, violations);
+        validate_command_binding_intent(
+            aggregate_name,
+            command,
+            binding,
+            base_dir,
+            grammar_registry,
+            adapter_runtime,
+            violations,
+        )?;
         validate_binding(
             binding,
             base_dir,
@@ -1490,6 +1523,7 @@ fn validate_command(
             violations,
         )?;
         validate_command_binding_arity(
+            aggregate_name,
             command,
             binding,
             base_dir,
@@ -1502,27 +1536,54 @@ fn validate_command(
 }
 
 fn validate_command_binding_intent(
+    aggregate_name: &str,
     command: &Command,
     binding: &Binding,
+    base_dir: &Path,
+    grammar_registry: &GrammarRegistry,
+    adapter_runtime: &AdapterRuntimeEngine<'_>,
     violations: &mut Vec<Violation>,
-) {
+) -> Result<()> {
     const WRITE_PREFIXES: [&str; 8] = [
         "create", "add", "update", "set", "remove", "delete", "ship", "cancel",
     ];
     const READ_PREFIXES: [&str; 4] = ["get", "list", "find", "read"];
 
     let Some(symbol_binding) = &binding.symbol else {
-        return;
+        return Ok(());
     };
     if !starts_with_any_prefix(&command.name.text, &WRITE_PREFIXES) {
-        return;
+        return Ok(());
     }
 
     let symbol = unquote(&symbol_binding.symbol.text);
     let symbol_leaf = symbol_leaf_name(&symbol);
     if !starts_with_any_prefix(symbol_leaf, &READ_PREFIXES) {
-        return;
+        return Ok(());
     }
+
+    let target = unquote(&binding.target.text);
+    let target_path = resolve_bound_path(base_dir, &target);
+    let source_span = if target_path.exists() {
+        if let Some(language) = adapter_runtime.language_for_path(&target_path) {
+            if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
+                if let Ok(source) = std::fs::read_to_string(&target_path) {
+                    adapter_runtime
+                        .find_symbol_span(&language, &target_path, &source, &symbol, &query)
+                        .ok()
+                        .flatten()
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     violations.push(Violation {
         severity: ViolationSeverity::Warning,
@@ -1537,10 +1598,16 @@ fn validate_command_binding_intent(
         ),
         docs_uri: Some(DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS),
         span: Some(span_from_symbol_binding(symbol_binding)),
-    });
+        source_span,
+        kite_spec: None,
+    }.with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)));
+
+
+    Ok(())
 }
 
 fn validate_command_binding_arity(
+    aggregate_name: &str,
     command: &Command,
     binding: &Binding,
     base_dir: &Path,
@@ -1583,6 +1650,11 @@ fn validate_command_binding_arity(
     }
     let language_name = language_display_name_from_registry(grammar_registry, &language);
 
+    let source_span = adapter_runtime
+        .find_symbol_span(&language, &target_path, &source, &symbol, &query)
+        .ok()
+        .flatten();
+
     violations.push(Violation {
         severity: ViolationSeverity::Error,
         code: CODE_COMMAND_BINDING_ARITY_MISMATCH,
@@ -1596,12 +1668,16 @@ fn validate_command_binding_arity(
         )),
         docs_uri: Some(DOCS_COMMAND_BINDING_ARITY_MISMATCH),
         span: Some(span_from_symbol_binding(symbol_binding)),
-    });
+        source_span,
+        kite_spec: None,
+    }.with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)));
+
 
     Ok(())
 }
 
 fn validate_invariant(
+    _aggregate_name: &str,
     invariant: &Invariant,
     base_dir: &Path,
     grammar_registry: &GrammarRegistry,
@@ -1638,9 +1714,9 @@ fn validate_binding(
             message: format!("bound file '{}' does not exist", target_path.display()),
             hint: Some("create the file or update the bound path".to_owned()),
             docs_uri: Some(DOCS_BINDING_FILE_NOT_FOUND),
-            span: Some(span_from_binding_target(binding)),
+            span: Some(span_from_binding_target(binding)), source_span: None, kite_spec: None,
         });
-    } else if let Ok(content) = std::fs::read_to_string(&target_path) {
+        } else if let Ok(content) = std::fs::read_to_string(&target_path) {
         if content.trim().is_empty() {
             violations.push(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1651,14 +1727,14 @@ fn validate_binding(
                 ),
                 hint: Some("add implementation to the bound file or remove the binding".to_owned()),
                 docs_uri: Some(DOCS_BINDING_FILE_EMPTY),
-                span: Some(span_from_binding_target(binding)),
+                span: Some(span_from_binding_target(binding)), source_span: None, kite_spec: None,
             });
         }
-    }
+        }
 
-    validate_binding_hash(binding, &target_path, target_exists, violations)?;
+        validate_binding_hash(binding, &target_path, target_exists, violations)?;
 
-    if binding.symbol.is_none() {
+        if binding.symbol.is_none() {
         violations.push(Violation {
             severity: ViolationSeverity::Information,
             code: CODE_BINDING_SYMBOL_MISSING,
@@ -1668,11 +1744,11 @@ fn validate_binding(
             ),
             hint: Some("add a 'symbol' clause to bind to a specific declaration".to_owned()),
             docs_uri: Some(DOCS_BINDING_SYMBOL_MISSING),
-            span: Some(span_from_binding_target(binding)),
+            span: Some(span_from_binding_target(binding)), source_span: None, kite_spec: None,
         });
-    }
+        }
 
-    if let Some(symbol_binding) = &binding.symbol {
+        if let Some(symbol_binding) = &binding.symbol {
         let symbol = unquote(&symbol_binding.symbol.text);
 
         if !target_exists {
@@ -1686,7 +1762,7 @@ fn validate_binding(
                 ),
                 hint: Some("fix the missing bound file first, then re-run verification".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY),
-                span: Some(span_from_symbol_binding(symbol_binding)),
+                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
             });
             return Ok(());
         }
@@ -1703,7 +1779,7 @@ fn validate_binding(
                 ),
                 hint: Some("use a supported language file or remove the symbol clause".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE),
-                span: Some(span_from_symbol_binding(symbol_binding)),
+                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
             });
             return Ok(());
         };
@@ -1718,7 +1794,7 @@ fn validate_binding(
                 ),
                 hint: Some("register the language grammar in grammars/grammars.toml".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE),
-                span: Some(span_from_symbol_binding(symbol_binding)),
+                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
             });
             return Ok(());
         }
@@ -1734,7 +1810,7 @@ fn validate_binding(
                 ),
                 hint: Some("add a 'symbol_exists' query to the language grammar".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_QUERY_MISSING),
-                span: Some(span_from_symbol_binding(symbol_binding)),
+                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
             });
             return Ok(());
         };
@@ -1753,7 +1829,7 @@ fn validate_binding(
                 ),
                 hint: Some("configure a builtin adapter or a reachable wasm adapter".to_owned()),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE),
-                span: Some(span_from_symbol_binding(symbol_binding)),
+                span: Some(span_from_symbol_binding(symbol_binding)), source_span: None, kite_spec: None,
             });
             return Ok(());
         };
@@ -1770,6 +1846,10 @@ fn validate_binding(
             .unwrap_or_else(|| {
                 "check the symbol name and ensure it is declared in the bound file".to_owned()
             });
+            let source_span = adapter_runtime
+                .find_symbol_span(&language, &target_path, &source, &symbol, &query)
+                .ok()
+                .flatten();
             violations.push(Violation {
                 severity: ViolationSeverity::Error,
                 code: CODE_BINDING_SYMBOL_NOT_FOUND,
@@ -1781,10 +1861,10 @@ fn validate_binding(
                 hint: Some(hint),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_NOT_FOUND),
                 span: Some(span_from_symbol_binding(symbol_binding)),
+                source_span, kite_spec: None,
             });
         }
-    }
-
+        }
     Ok(())
 }
 
@@ -1809,7 +1889,7 @@ fn validate_binding_hash(
             ),
             hint: Some("use format 'hash \"<64 lowercase hex SHA-256>\"'".to_owned()),
             docs_uri: Some(DOCS_BINDING_HASH_INVALID_FORMAT),
-            span: span_for_hash_binding(binding, hash_binding),
+            span: span_for_hash_binding(binding, hash_binding), source_span: None, kite_spec: None,
         });
         return Ok(());
     }
@@ -1839,7 +1919,7 @@ fn validate_binding_hash(
                 .to_owned(),
         ),
         docs_uri: Some(DOCS_BINDING_HASH_MISMATCH),
-        span: span_for_hash_binding(binding, hash_binding),
+        span: span_for_hash_binding(binding, hash_binding), source_span: None, kite_spec: None,
     });
     Ok(())
 }

@@ -13,6 +13,8 @@ type SourceAugmentation = {
   line: number;
   label: string;
   detail: string;
+  sourceLine?: number;
+  kiteSpec?: string;
 };
 
 const kiteDiagnosticsByDocument = new Map<string, Map<string, SourceAugmentation[]>>();
@@ -36,13 +38,17 @@ const sourceInlayHintsProvider: vscode.InlayHintsProvider = {
     }
 
     return entries.flatMap((entry) => {
-      const line = clampLine(entry.line, document.lineCount);
+      const line = clampLine(
+        entry.sourceLine !== undefined ? entry.sourceLine : entry.line,
+        document.lineCount
+      );
       if (line < range.start.line || line > range.end.line) {
         return [];
       }
 
       const position = document.lineAt(line).range.end;
-      const hint = new vscode.InlayHint(position, entry.label, vscode.InlayHintKind.Type);
+      const label = entry.kiteSpec ? `← ${entry.kiteSpec}` : entry.label;
+      const hint = new vscode.InlayHint(position, label, vscode.InlayHintKind.Type);
       hint.paddingLeft = true;
       hint.tooltip = entry.detail;
       return [hint];
@@ -279,10 +285,15 @@ function collectAugmentationsForKiteUri(uri: vscode.Uri): Map<string, SourceAugm
 
     const sourceKey = sourceUri.toString();
     const existing = bySourceUri.get(sourceKey) ?? [];
+    const diag = diagnostic as any;
+    const sourceSpan = diag.data?.sourceSpan;
+    const kiteSpec = diag.data?.kiteSpec;
     existing.push({
       line: diagnostic.range.start.line,
       label: labelForDiagnostic(diagnostic),
-      detail: detailForDiagnostic(diagnostic)
+      detail: detailForDiagnostic(diagnostic),
+      sourceLine: sourceSpan?.start_line !== undefined ? sourceSpan.start_line - 1 : undefined,
+      kiteSpec
     });
     bySourceUri.set(sourceKey, existing);
   }
@@ -298,14 +309,18 @@ function applySourceDecorations(editor: vscode.TextEditor): void {
   }
 
   const decorations = entries.map((entry) => {
-    const line = clampLine(entry.line, editor.document.lineCount);
+    const line = clampLine(
+      entry.sourceLine !== undefined ? entry.sourceLine : entry.line,
+      editor.document.lineCount
+    );
     const position = editor.document.lineAt(line).range.end;
+    const label = entry.kiteSpec ? `← ${entry.kiteSpec}` : entry.label;
     return {
       range: new vscode.Range(position, position),
       hoverMessage: entry.detail,
       renderOptions: {
         after: {
-          contentText: entry.label
+          contentText: label
         }
       }
     } satisfies vscode.DecorationOptions;

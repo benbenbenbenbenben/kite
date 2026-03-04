@@ -828,7 +828,8 @@ fn diagnostic_from_violation(violation: kite_core::Violation) -> Diagnostic {
     let code = violation.code;
     let hint = violation.hint;
     let docs_uri = violation.docs_uri;
-    let has_metadata = hint.is_some() || docs_uri.is_some();
+    let has_metadata =
+        hint.is_some() || docs_uri.is_some() || violation.source_span.is_some() || violation.kite_spec.is_some();
 
     Diagnostic {
         range,
@@ -843,6 +844,8 @@ fn diagnostic_from_violation(violation: kite_core::Violation) -> Diagnostic {
                 "code": code,
                 "hint": hint,
                 "docsUri": docs_uri,
+                "sourceSpan": violation.source_span,
+                "kiteSpec": violation.kite_spec,
             })
         }),
         message: violation.message,
