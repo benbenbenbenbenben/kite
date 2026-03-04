@@ -135,7 +135,7 @@ Kite is built in **Rust** and leverages `rust-sitter`.
 
 ## The Ecosystem
 
-Kite is part of the **K-Stack**, a suite of tools designed for high-assurance, easily modeled distributed systems:
+Kite is part of the **kodus ecosystem**, a suite of tools designed for high-assurance, easily modeled distributed systems:
 
 * **Kodus**: The secure server runtime (Home).
 * **Kettu**: The agile, WASM-native implementation language (Fox).
