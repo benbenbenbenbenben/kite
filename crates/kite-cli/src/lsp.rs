@@ -40,6 +40,39 @@ struct Backend {
 }
 
 impl Backend {
+    /// Scan workspace for .kite files and publish diagnostics in the background.
+    /// This avoids blocking the tower-lsp request pipeline.
+    fn spawn_workspace_diagnostics(&self) {
+        let client = self.client.clone();
+        let kite_files = self.find_kite_files();
+        let open_docs = self.snapshot_open_documents();
+        tokio::spawn(async move {
+            // Re-check open documents first
+            for (uri, text) in &open_docs {
+                let diagnostics = diagnostics_for_source(text, uri);
+                publish_diagnostics(&client, uri.clone(), diagnostics, None).await;
+            }
+            // Then check workspace .kite files not currently open
+            let open_uris: std::collections::HashSet<Url> =
+                open_docs.into_iter().map(|(uri, _)| uri).collect();
+            for path in kite_files {
+                let Ok(uri) = Url::from_file_path(&path) else {
+                    continue;
+                };
+                if open_uris.contains(&uri) {
+                    continue;
+                }
+                let Ok(source) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let diagnostics = diagnostics_for_source(&source, &uri);
+                publish_diagnostics(&client, uri, diagnostics, None).await;
+            }
+        });
+    }
+}
+
+impl Backend {
     fn set_open_document(&self, uri: Url, text: String) {
         if let Ok(mut docs) = self.open_documents.lock() {
             docs.insert(uri, text);
@@ -111,16 +144,25 @@ impl Backend {
     }
 
     async fn publish(&self, uri: Url, diagnostics: Vec<Diagnostic>, version: Option<i32>) {
-        self.client
-            .send_notification::<tower_lsp::lsp_types::notification::PublishDiagnostics>(
-                PublishDiagnosticsParams {
-                    uri,
-                    diagnostics,
-                    version,
-                },
-            )
-            .await;
+        publish_diagnostics(&self.client, uri, diagnostics, version).await;
     }
+}
+
+async fn publish_diagnostics(
+    client: &Client,
+    uri: Url,
+    diagnostics: Vec<Diagnostic>,
+    version: Option<i32>,
+) {
+    client
+        .send_notification::<tower_lsp::lsp_types::notification::PublishDiagnostics>(
+            PublishDiagnosticsParams {
+                uri,
+                diagnostics,
+                version,
+            },
+        )
+        .await;
 }
 
 #[tower_lsp::async_trait]
@@ -192,17 +234,7 @@ impl LanguageServer for Backend {
             .log_message(MessageType::INFO, "kite LSP initialized")
             .await;
 
-        // Scan workspace for all .kite files and publish diagnostics
-        for path in self.find_kite_files() {
-            let Ok(uri) = Url::from_file_path(&path) else {
-                continue;
-            };
-            let Ok(source) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let diagnostics = diagnostics_for_source(&source, &uri);
-            self.publish(uri, diagnostics, None).await;
-        }
+        self.spawn_workspace_diagnostics();
     }
 
     async fn shutdown(&self) -> jsonrpc::Result<()> {
@@ -213,18 +245,24 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
         self.set_open_document(uri.clone(), text.clone());
-        let diagnostics = diagnostics_for_source(&text, &uri);
-        self.publish(uri, diagnostics, None).await;
+        let client = self.client.clone();
+        tokio::spawn(async move {
+            let diagnostics = diagnostics_for_source(&text, &uri);
+            publish_diagnostics(&client, uri, diagnostics, None).await;
+        });
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Some(change) = params.content_changes.into_iter().next() {
             let uri = params.text_document.uri;
             let text = change.text;
+            let version = params.text_document.version;
             self.set_open_document(uri.clone(), text.clone());
-            let diagnostics = diagnostics_for_source(&text, &uri);
-            self.publish(uri, diagnostics, Some(params.text_document.version))
-                .await;
+            let client = self.client.clone();
+            tokio::spawn(async move {
+                let diagnostics = diagnostics_for_source(&text, &uri);
+                publish_diagnostics(&client, uri, diagnostics, Some(version)).await;
+            });
         }
     }
 
@@ -235,30 +273,7 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_watched_files(&self, _: DidChangeWatchedFilesParams) {
-        // Re-check all open documents
-        for (uri, text) in self.snapshot_open_documents() {
-            let diagnostics = diagnostics_for_source(&text, &uri);
-            self.publish(uri, diagnostics, None).await;
-        }
-        // Also re-check any workspace .kite files not currently open
-        let open_uris: std::collections::HashSet<Url> = self
-            .snapshot_open_documents()
-            .into_iter()
-            .map(|(uri, _)| uri)
-            .collect();
-        for path in self.find_kite_files() {
-            let Ok(uri) = Url::from_file_path(&path) else {
-                continue;
-            };
-            if open_uris.contains(&uri) {
-                continue;
-            }
-            let Ok(source) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let diagnostics = diagnostics_for_source(&source, &uri);
-            self.publish(uri, diagnostics, None).await;
-        }
+        self.spawn_workspace_diagnostics();
     }
 
     async fn goto_definition(

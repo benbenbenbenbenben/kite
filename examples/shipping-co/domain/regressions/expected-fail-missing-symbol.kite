@@ -1,5 +1,5 @@
 context ShippingRegressionMissingSymbolContext {
-  aggregate ParserBindingMissingSymbol bound to "../../../crates/kite-parser/src/lib.rs" {
-    command parseSource(source: String) bound to "../../../crates/kite-parser/src/lib.rs" symbol "parse_does_not_exist"
+  aggregate ParserBindingMissingSymbol bound to "../../../../crates/kite-parser/src/lib.rs" {
+    command parseSource(source: String) bound to "../../../../crates/kite-parser/src/lib.rs" symbol "parse_does_not_exist"
   }
 }
