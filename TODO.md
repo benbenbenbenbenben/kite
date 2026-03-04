@@ -56,8 +56,8 @@
 
 ## Enriched Diagnostics
 
-- [ ] Include source code snippets in diagnostic messages (e.g. for `COMMAND_BINDING_ARITY_MISMATCH`, show the function signature from the bound source file as a multiline message) — diagnostic messages support multiline via `\n`, but no markdown
-- [ ] Include clickable file paths in diagnostic messages — VS Code auto-links `path/to/file.rs:42:5` format; test which format feels best in the Problems panel and hover tooltip
+- [x] Include source code snippets in diagnostic messages (e.g. for `COMMAND_BINDING_ARITY_MISMATCH`, show the function signature from the bound source file as a multiline message) — diagnostic messages support multiline via `\n`, but no markdown
+- [x] Include clickable file paths in diagnostic messages — VS Code auto-links `path/to/file.rs:42:5` format; test which format feels best in the Problems panel and hover tooltip
 - [ ] Explore using `codeDescription.href` with `file:///` URIs to link directly from the diagnostic code to the offending source location — the LSP already uses `codeDescription` for docs links, could add source file links too
 
 ## Source File Decorations
@@ -66,7 +66,7 @@ The goal: make bound source files "aware" of their kite specifications. Similar 
 
 - [ ] Gutter/margin indicators on bound source files showing kite association status (pass/fail/warning) — similar to test runner coverage indicators
 - [ ] Explore using a small kite icon (custom `gutterIconPath`) for lines referenced by kite bindings, coloured red/amber/green by validation state
-- [ ] Inlay hints on bound source symbols showing the associated kite spec (e.g. `← Order.ship`) — note: the extension already has an inlay hints provider (`sourceInlayHintsProvider`) that could be extended
+- [x] Inlay hints on bound source symbols showing the associated kite spec (e.g. `← Order.ship`) — note: the extension already has an inlay hints provider (`sourceInlayHintsProvider`) that could be extended
 - [ ] Decide: gutter icons vs inlay hints vs both — prototype both and see what feels right
 - [ ] Add a "Find Related Kite Specifications" command (reverse lookup: given a source file + symbol, find all `.kite` entries that bind to it)
 - [ ] Explore CodeLens as an alternative/complement — show "Referenced by: Order.ship (SalesContext)" above bound functions

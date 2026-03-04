@@ -1564,14 +1564,17 @@ fn validate_command_binding_intent(
 
     let target = unquote(&binding.target.text);
     let target_path = resolve_bound_path(base_dir, &target);
+    let mut source_content = None;
     let source_span = if target_path.exists() {
         if let Some(language) = adapter_runtime.language_for_path(&target_path) {
             if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
                 if let Ok(source) = std::fs::read_to_string(&target_path) {
-                    adapter_runtime
+                    let span = adapter_runtime
                         .find_symbol_span(&language, &target_path, &source, &symbol, &query)
                         .ok()
-                        .flatten()
+                        .flatten();
+                    source_content = Some(source);
+                    span
                 } else {
                     None
                 }
@@ -1585,13 +1588,30 @@ fn validate_command_binding_intent(
         None
     };
 
+    let mut message = format!(
+        "command '{}' looks write-oriented but bound symbol '{}' looks read-oriented",
+        command.name.text, symbol
+    );
+
+    if let Some(span) = source_span {
+        if let Some(source) = source_content {
+            if let Some(snippet) = extract_source_snippet(&source, &span) {
+                message.push_str("\n\n");
+                message.push_str(&snippet);
+            }
+        }
+        message.push_str(&format!(
+            "\n\nSource: {}:{}:{}",
+            target_path.display(),
+            span.start_line,
+            span.start_column
+        ));
+    }
+
     violations.push(Violation {
         severity: ViolationSeverity::Warning,
         code: CODE_COMMAND_BINDING_INTENT_SUSPICIOUS,
-        message: format!(
-            "command '{}' looks write-oriented but bound symbol '{}' looks read-oriented",
-            command.name.text, symbol
-        ),
+        message,
         hint: Some(
             "bind this command to a write-oriented symbol or rename the command/symbol so intents match"
                 .to_owned(),
@@ -1655,13 +1675,28 @@ fn validate_command_binding_arity(
         .ok()
         .flatten();
 
+    let mut message = format!(
+        "command '{}' declares {} parameter(s), but {} symbol '{}' expects {} parameter(s)",
+        command.name.text, actual_arity, language_name, symbol, expected_arity
+    );
+
+    if let Some(span) = source_span {
+        if let Some(snippet) = extract_source_snippet(&source, &span) {
+            message.push_str("\n\n");
+            message.push_str(&snippet);
+        }
+        message.push_str(&format!(
+            "\n\nSource: {}:{}:{}",
+            target_path.display(),
+            span.start_line,
+            span.start_column
+        ));
+    }
+
     violations.push(Violation {
         severity: ViolationSeverity::Error,
         code: CODE_COMMAND_BINDING_ARITY_MISMATCH,
-        message: format!(
-            "command '{}' declares {} parameter(s), but {} symbol '{}' expects {} parameter(s)",
-            command.name.text, actual_arity, language_name, symbol, expected_arity
-        ),
+        message,
         hint: Some(format!(
             "adjust command parameters to {} or bind to a {} symbol that accepts {} parameter(s)",
             expected_arity, language_name, actual_arity
@@ -1850,19 +1885,30 @@ fn validate_binding(
                 .find_symbol_span(&language, &target_path, &source, &symbol, &query)
                 .ok()
                 .flatten();
+            let mut message = format!(
+                "symbol '{}' was not found in '{}'",
+                symbol,
+                target_path.display()
+            );
+            if let Some(span) = source_span {
+                message.push_str(&format!(
+                    "\n\nSource: {}:{}:{}",
+                    target_path.display(),
+                    span.start_line,
+                    span.start_column
+                ));
+            }
             violations.push(Violation {
                 severity: ViolationSeverity::Error,
                 code: CODE_BINDING_SYMBOL_NOT_FOUND,
-                message: format!(
-                    "symbol '{}' was not found in '{}'",
-                    symbol,
-                    target_path.display()
-                ),
+                message,
                 hint: Some(hint),
                 docs_uri: Some(DOCS_BINDING_SYMBOL_NOT_FOUND),
                 span: Some(span_from_symbol_binding(symbol_binding)),
-                source_span, kite_spec: None,
+                source_span,
+                kite_spec: None,
             });
+
         }
         }
     Ok(())
@@ -2109,6 +2155,30 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     }
 
     prev_row[b_chars.len()]
+}
+
+fn extract_source_snippet(source: &str, span: &ViolationSpan) -> Option<String> {
+    let lines: Vec<_> = source.lines().collect();
+    if span.start_line == 0 || span.start_line > lines.len() {
+        return None;
+    }
+
+    let start = span.start_line.saturating_sub(1);
+    let end = span.end_line.min(lines.len()).max(span.start_line);
+    let mut snippet = String::new();
+
+    for i in start..end {
+        if i > start {
+            snippet.push('\n');
+        }
+        snippet.push_str(lines[i]);
+    }
+
+    if snippet.trim().is_empty() {
+        None
+    } else {
+        Some(snippet)
+    }
 }
 
 fn resolve_grammar_root(base_dir: &Path) -> Result<PathBuf> {
