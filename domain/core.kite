@@ -5,11 +5,11 @@ context CoreLanguageParsingContext {
     "UnsupportedContextElement" => forbidden
   }
 
-  aggregate ParserAstModel bound to "../crates/kide-parser/src/grammar/mod.rs" {
+  aggregate ParserAstModel bound to "../crates/kite-parser/src/grammar/mod.rs" {
     contexts: Int
-    command parseSource(source: String) bound to "../crates/kide-parser/src/lib.rs" symbol "parse"
-    command parseSpecFile(path: String) bound to "../crates/kide-parser/src/lib.rs" symbol "parse_file"
-    invariant ParserBuildsProgramAst bound to "../crates/kide-parser/src/lib.rs" symbol "parse"
+    command parseSource(source: String) bound to "../crates/kite-parser/src/lib.rs" symbol "parse"
+    command parseSpecFile(path: String) bound to "../crates/kite-parser/src/lib.rs" symbol "parse_file"
+    invariant ParserBuildsProgramAst bound to "../crates/kite-parser/src/lib.rs" symbol "parse"
   }
 }
 
@@ -20,9 +20,9 @@ context BindingValidationContext {
     "UncheckedDependency" => forbidden
   }
 
-  aggregate BindingValidationModel bound to "../crates/kide-core/src/lib.rs" symbol "check_source_in_dir" {
-    command checkSourceInDirectory(source: String, baseDir: String) bound to "../crates/kide-core/src/lib.rs" symbol "check_source_in_dir"
-    invariant BoundPathsResolveFromBaseDirectory bound to "../crates/kide-core/src/lib.rs" symbol "resolve_bound_path"
+  aggregate BindingValidationModel bound to "../crates/kite-core/src/lib.rs" symbol "check_source_in_dir" {
+    command checkSourceInDirectory(source: String, baseDir: String) bound to "../crates/kite-core/src/lib.rs" symbol "check_source_in_dir"
+    invariant BoundPathsResolveFromBaseDirectory bound to "../crates/kite-core/src/lib.rs" symbol "resolve_bound_path"
   }
 }
 
@@ -33,12 +33,12 @@ context SymbolVerificationContext {
     "UnregisteredGrammar" => forbidden
   }
 
-  aggregate SymbolVerificationModel bound to "../crates/kide-core/src/wasm_adapter.rs" symbol "symbol_exists" {
-    command verifySymbol(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kide-core/src/wasm_adapter.rs" symbol "symbol_exists"
-    command findSymbolSpan(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kide-core/src/wasm_adapter.rs" symbol "find_symbol_span"
-    command nearestSymbol(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kide-core/src/wasm_adapter.rs" symbol "nearest_symbol"
-    command symbolArity(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kide-core/src/wasm_adapter.rs" symbol "symbol_arity"
-    invariant BoundaryReferencesDetected bound to "../crates/kide-core/src/wasm_adapter.rs" symbol "boundary_references"
+  aggregate SymbolVerificationModel bound to "../crates/kite-core/src/wasm_adapter.rs" symbol "symbol_exists" {
+    command verifySymbol(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kite-core/src/wasm_adapter.rs" symbol "symbol_exists"
+    command findSymbolSpan(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kite-core/src/wasm_adapter.rs" symbol "find_symbol_span"
+    command nearestSymbol(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kite-core/src/wasm_adapter.rs" symbol "nearest_symbol"
+    command symbolArity(registry: String, language: String, isTsx: Boolean, source: String, symbol: String, querySource: String) bound to "../crates/kite-core/src/wasm_adapter.rs" symbol "symbol_arity"
+    invariant BoundaryReferencesDetected bound to "../crates/kite-core/src/wasm_adapter.rs" symbol "boundary_references"
   }
 }
 
@@ -49,10 +49,10 @@ context DefinitionResolutionContext {
     "UnknownDefinition" => forbidden
   }
 
-  aggregate DefinitionResolutionModel bound to "../crates/kide-core/src/lib.rs" symbol "definition_at" {
+  aggregate DefinitionResolutionModel bound to "../crates/kite-core/src/lib.rs" symbol "definition_at" {
     line: Int
     column: Int
-    command resolveDefinitionAt(source: String, baseDir: String, line: Int, column: Int) bound to "../crates/kide-core/src/lib.rs" symbol "definition_at"
-    invariant CursorMustLandInsideBindingSpan bound to "../crates/kide-core/src/lib.rs" symbol "position_in_span"
+    command resolveDefinitionAt(source: String, baseDir: String, line: Int, column: Int) bound to "../crates/kite-core/src/lib.rs" symbol "definition_at"
+    invariant CursorMustLandInsideBindingSpan bound to "../crates/kite-core/src/lib.rs" symbol "position_in_span"
   }
 }

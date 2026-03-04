@@ -873,81 +873,196 @@ fn document_symbols_for_source(source: &str) -> Vec<DocumentSymbol> {
     for context in program.contexts {
         let mut context_children = Vec::new();
         for element in context.elements {
-            let kite_parser::grammar::ContextElement::Aggregate(aggregate) = element else {
-                continue;
-            };
+            match element {
+                kite_parser::grammar::ContextElement::Dictionary(dictionary) => {
+                    let mut dict_children = Vec::new();
+                    for entry in &dictionary.entries {
+                        let key_text = entry.key.text.trim_matches('"').to_owned();
+                        dict_children.push(DocumentSymbol {
+                            name: key_text,
+                            detail: Some("entry".to_owned()),
+                            kind: SymbolKind::KEY,
+                            tags: None,
+                            deprecated: None,
+                            range: range_from_position(
+                                entry.key.position.start.line,
+                                entry.key.position.start.column,
+                                entry.key.position.end.line,
+                                entry.key.position.end.column,
+                            ),
+                            selection_range: range_from_position(
+                                entry.key.position.start.line,
+                                entry.key.position.start.column,
+                                entry.key.position.end.line,
+                                entry.key.position.end.column,
+                            ),
+                            children: None,
+                        });
+                    }
 
-            let mut aggregate_children = Vec::new();
-            for member in aggregate.members {
-                match member {
-                    kite_parser::grammar::AggregateMember::Command(command) => {
-                        aggregate_children.push(DocumentSymbol {
-                            name: command.name.text.clone(),
-                            detail: Some("command".to_owned()),
-                            kind: SymbolKind::METHOD,
+                    // Use the first entry's position as the selection range,
+                    // or fall back to a zero range.
+                    let sel = dictionary
+                        .entries
+                        .first()
+                        .map(|e| {
+                            range_from_position(
+                                e.key.position.start.line,
+                                e.key.position.start.column,
+                                e.key.position.start.line,
+                                e.key.position.start.column,
+                            )
+                        })
+                        .unwrap_or_else(|| Range::new(Position::new(0, 0), Position::new(0, 0)));
+
+                    context_children.push(DocumentSymbol {
+                        name: "dictionary".to_owned(),
+                        detail: Some("dictionary".to_owned()),
+                        kind: SymbolKind::OBJECT,
+                        tags: None,
+                        deprecated: None,
+                        range: sel,
+                        selection_range: sel,
+                        children: Some(dict_children),
+                    });
+                }
+                kite_parser::grammar::ContextElement::Boundary(boundary) => {
+                    let mut boundary_children = Vec::new();
+                    for entry in &boundary.entries {
+                        boundary_children.push(DocumentSymbol {
+                            name: entry.context.text.clone(),
+                            detail: Some("forbid".to_owned()),
+                            kind: SymbolKind::CONSTANT,
                             tags: None,
                             deprecated: None,
                             range: range_from_position(
-                                command.name.position.start.line,
-                                command.name.position.start.column,
-                                command.name.position.end.line,
-                                command.name.position.end.column,
+                                entry.context.position.start.line,
+                                entry.context.position.start.column,
+                                entry.context.position.end.line,
+                                entry.context.position.end.column,
                             ),
                             selection_range: range_from_position(
-                                command.name.position.start.line,
-                                command.name.position.start.column,
-                                command.name.position.end.line,
-                                command.name.position.end.column,
+                                entry.context.position.start.line,
+                                entry.context.position.start.column,
+                                entry.context.position.end.line,
+                                entry.context.position.end.column,
                             ),
                             children: None,
                         });
                     }
-                    kite_parser::grammar::AggregateMember::Invariant(invariant) => {
-                        aggregate_children.push(DocumentSymbol {
-                            name: invariant.name.text.clone(),
-                            detail: Some("invariant".to_owned()),
-                            kind: SymbolKind::PROPERTY,
-                            tags: None,
-                            deprecated: None,
-                            range: range_from_position(
-                                invariant.name.position.start.line,
-                                invariant.name.position.start.column,
-                                invariant.name.position.end.line,
-                                invariant.name.position.end.column,
-                            ),
-                            selection_range: range_from_position(
-                                invariant.name.position.start.line,
-                                invariant.name.position.start.column,
-                                invariant.name.position.end.line,
-                                invariant.name.position.end.column,
-                            ),
-                            children: None,
-                        });
+
+                    let sel = boundary
+                        .entries
+                        .first()
+                        .map(|e| {
+                            range_from_position(
+                                e.context.position.start.line,
+                                e.context.position.start.column,
+                                e.context.position.start.line,
+                                e.context.position.start.column,
+                            )
+                        })
+                        .unwrap_or_else(|| Range::new(Position::new(0, 0), Position::new(0, 0)));
+
+                    context_children.push(DocumentSymbol {
+                        name: "boundary".to_owned(),
+                        detail: Some("boundary".to_owned()),
+                        kind: SymbolKind::INTERFACE,
+                        tags: None,
+                        deprecated: None,
+                        range: sel,
+                        selection_range: sel,
+                        children: Some(boundary_children),
+                    });
+                }
+                kite_parser::grammar::ContextElement::Aggregate(aggregate) => {
+                    let mut aggregate_children = Vec::new();
+                    for member in aggregate.members {
+                        match member {
+                            kite_parser::grammar::AggregateMember::Command(command) => {
+                                aggregate_children.push(DocumentSymbol {
+                                    name: command.name.text.clone(),
+                                    detail: Some("command".to_owned()),
+                                    kind: SymbolKind::METHOD,
+                                    tags: None,
+                                    deprecated: None,
+                                    range: range_from_position(
+                                        command.name.position.start.line,
+                                        command.name.position.start.column,
+                                        command.name.position.end.line,
+                                        command.name.position.end.column,
+                                    ),
+                                    selection_range: range_from_position(
+                                        command.name.position.start.line,
+                                        command.name.position.start.column,
+                                        command.name.position.end.line,
+                                        command.name.position.end.column,
+                                    ),
+                                    children: None,
+                                });
+                            }
+                            kite_parser::grammar::AggregateMember::Invariant(invariant) => {
+                                aggregate_children.push(DocumentSymbol {
+                                    name: invariant.name.text.clone(),
+                                    detail: Some("invariant".to_owned()),
+                                    kind: SymbolKind::PROPERTY,
+                                    tags: None,
+                                    deprecated: None,
+                                    range: range_from_position(
+                                        invariant.name.position.start.line,
+                                        invariant.name.position.start.column,
+                                        invariant.name.position.end.line,
+                                        invariant.name.position.end.column,
+                                    ),
+                                    selection_range: range_from_position(
+                                        invariant.name.position.start.line,
+                                        invariant.name.position.start.column,
+                                        invariant.name.position.end.line,
+                                        invariant.name.position.end.column,
+                                    ),
+                                    children: None,
+                                });
+                            }
+                            kite_parser::grammar::AggregateMember::Field(field) => {
+                                aggregate_children.push(DocumentSymbol {
+                                    name: field.name.text.clone(),
+                                    detail: Some("field".to_owned()),
+                                    kind: SymbolKind::FIELD,
+                                    tags: None,
+                                    deprecated: None,
+                                    range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                                    selection_range: Range::new(
+                                        Position::new(0, 0),
+                                        Position::new(0, 0),
+                                    ),
+                                    children: None,
+                                });
+                            }
+                        }
                     }
-                    kite_parser::grammar::AggregateMember::Field(_) => {}
+
+                    context_children.push(DocumentSymbol {
+                        name: aggregate.name.text.clone(),
+                        detail: Some("aggregate".to_owned()),
+                        kind: SymbolKind::STRUCT,
+                        tags: None,
+                        deprecated: None,
+                        range: range_from_position(
+                            aggregate.name.position.start.line,
+                            aggregate.name.position.start.column,
+                            aggregate.name.position.end.line,
+                            aggregate.name.position.end.column,
+                        ),
+                        selection_range: range_from_position(
+                            aggregate.name.position.start.line,
+                            aggregate.name.position.start.column,
+                            aggregate.name.position.end.line,
+                            aggregate.name.position.end.column,
+                        ),
+                        children: Some(aggregate_children),
+                    });
                 }
             }
-
-            context_children.push(DocumentSymbol {
-                name: aggregate.name.text.clone(),
-                detail: Some("aggregate".to_owned()),
-                kind: SymbolKind::STRUCT,
-                tags: None,
-                deprecated: None,
-                range: range_from_position(
-                    aggregate.name.position.start.line,
-                    aggregate.name.position.start.column,
-                    aggregate.name.position.end.line,
-                    aggregate.name.position.end.column,
-                ),
-                selection_range: range_from_position(
-                    aggregate.name.position.start.line,
-                    aggregate.name.position.start.column,
-                    aggregate.name.position.end.line,
-                    aggregate.name.position.end.column,
-                ),
-                children: Some(aggregate_children),
-            });
         }
 
         symbols.push(DocumentSymbol {
@@ -1043,6 +1158,90 @@ context SalesContext {
         assert_eq!(context_children[0].name, "Order");
         let aggregate_children = context_children[0].children.as_ref().unwrap();
         assert_eq!(aggregate_children.len(), 2);
+        assert_eq!(aggregate_children[0].name, "ship");
+        assert_eq!(aggregate_children[0].detail.as_deref(), Some("command"));
+        assert_eq!(aggregate_children[1].name, "MustHaveItems");
+        assert_eq!(aggregate_children[1].detail.as_deref(), Some("invariant"));
+    }
+
+    #[test]
+    fn builds_outline_with_dictionary_symbols() {
+        let source = r#"
+context TestContext {
+  dictionary {
+    "User" => "KnownUser"
+    "Account" => forbidden
+  }
+  aggregate Dummy {
+    command noop() bound to "dummy.rs" symbol "noop"
+  }
+}
+"#;
+
+        let symbols = document_symbols_for_source(source);
+        assert_eq!(symbols.len(), 1);
+        let context_children = symbols[0].children.as_ref().unwrap();
+        assert_eq!(context_children.len(), 2);
+        assert_eq!(context_children[0].name, "dictionary");
+        assert_eq!(context_children[0].detail.as_deref(), Some("dictionary"));
+        let dict_children = context_children[0].children.as_ref().unwrap();
+        assert_eq!(dict_children.len(), 2);
+        assert_eq!(dict_children[0].name, "User");
+        assert_eq!(dict_children[0].detail.as_deref(), Some("entry"));
+        assert_eq!(dict_children[1].name, "Account");
+    }
+
+    #[test]
+    fn builds_outline_with_boundary_symbols() {
+        let source = r#"
+context TestContext {
+  boundary {
+    forbid OtherContext
+    forbid AnotherContext
+  }
+  aggregate Dummy {
+    command noop() bound to "dummy.rs" symbol "noop"
+  }
+}
+"#;
+
+        let symbols = document_symbols_for_source(source);
+        assert_eq!(symbols.len(), 1);
+        let context_children = symbols[0].children.as_ref().unwrap();
+        assert_eq!(context_children.len(), 2);
+        assert_eq!(context_children[0].name, "boundary");
+        assert_eq!(context_children[0].detail.as_deref(), Some("boundary"));
+        let boundary_children = context_children[0].children.as_ref().unwrap();
+        assert_eq!(boundary_children.len(), 2);
+        assert_eq!(boundary_children[0].name, "OtherContext");
+        assert_eq!(boundary_children[0].detail.as_deref(), Some("forbid"));
+        assert_eq!(boundary_children[1].name, "AnotherContext");
+    }
+
+    #[test]
+    fn builds_outline_with_field_symbols() {
+        let source = r#"
+context TestContext {
+  aggregate Order {
+    orderId: String
+    status: String
+    command ship() bound to "src/order.rs" symbol "Order::ship"
+  }
+}
+"#;
+
+        let symbols = document_symbols_for_source(source);
+        assert_eq!(symbols.len(), 1);
+        let context_children = symbols[0].children.as_ref().unwrap();
+        assert_eq!(context_children.len(), 1);
+        let aggregate_children = context_children[0].children.as_ref().unwrap();
+        assert_eq!(aggregate_children.len(), 3);
+        assert_eq!(aggregate_children[0].name, "orderId");
+        assert_eq!(aggregate_children[0].detail.as_deref(), Some("field"));
+        assert_eq!(aggregate_children[1].name, "status");
+        assert_eq!(aggregate_children[1].detail.as_deref(), Some("field"));
+        assert_eq!(aggregate_children[2].name, "ship");
+        assert_eq!(aggregate_children[2].detail.as_deref(), Some("command"));
     }
 
     #[test]

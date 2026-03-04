@@ -1,0 +1,19 @@
+context OutlineTestContext {
+  dictionary {
+    "User" => "KnownUser"
+    "Account" => forbidden
+  }
+
+  boundary {
+    forbid OtherContext
+    forbid AnotherContext
+  }
+
+  aggregate Order bound to "dummy.rs" {
+    orderId: String
+    status: String
+    command ship() bound to "dummy.rs" symbol "ship"
+    command cancel() bound to "dummy.rs" symbol "cancel"
+    invariant MustHaveItems bound to "dummy.rs" symbol "mustHaveItems"
+  }
+}

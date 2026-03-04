@@ -1,5 +1,5 @@
 // Infrastructure domain - separate from the main domain model
-// Tests multi-file kide workflows
+// Tests multi-file kite workflows
 
 context ObservabilityContext {
   dictionary {

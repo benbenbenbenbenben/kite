@@ -12,7 +12,7 @@ context DictionaryDemoContext {
   }
 }
 
-// Arity: kide declares 1 param, TS function has 3
+// Arity: kite declares 1 param, TS function has 3
 context ArityDemoContext {
   aggregate ArityDemo bound to "../src/lib/demos/arity_demo.ts" symbol "ArityDemo" {
     command processOrder(orderId: String) bound to "../src/lib/demos/arity_demo.ts" symbol "processOrder"

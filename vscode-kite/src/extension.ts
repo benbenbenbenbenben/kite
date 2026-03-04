@@ -51,10 +51,16 @@ const sourceInlayHintsProvider: vscode.InlayHintsProvider = {
 };
 
 export function activate(context: vscode.ExtensionContext): void {
+  const outputChannel = vscode.window.createOutputChannel('Kite Language Server');
+
   const configuredServerPath = vscode.workspace
     .getConfiguration('kite')
     .get<string>('server.path', 'kite');
   const serverPath = resolveServerPath(configuredServerPath, context.extensionMode);
+  outputChannel.appendLine(`[kite] Extension mode: ${vscode.ExtensionMode[context.extensionMode]}`);
+  outputChannel.appendLine(`[kite] Configured server path: "${configuredServerPath}"`);
+  outputChannel.appendLine(`[kite] Resolved server path: "${serverPath}"`);
+  outputChannel.appendLine(`[kite] Server command: ${serverPath} start-lsp`);
 
   const executable: Executable = {
     command: serverPath,
@@ -75,7 +81,8 @@ export function activate(context: vscode.ExtensionContext): void {
     documentSelector: [{ scheme: 'file', language: 'kite' }],
     synchronize: {
       fileEvents: [kiteWatcher, sourceWatcher]
-    }
+    },
+    outputChannel
   };
 
   client = new LanguageClient(
@@ -113,8 +120,15 @@ export function activate(context: vscode.ExtensionContext): void {
     applySourceDecorations(editor);
   }
 
-  void client.start();
+  client.start().then(
+    () => outputChannel.appendLine('[kite] Language server started successfully'),
+    (err) => {
+      outputChannel.appendLine(`[kite] ERROR: Language server failed to start: ${err}`);
+      vscode.window.showErrorMessage(`Kite LSP failed to start: ${err}`);
+    }
+  );
   context.subscriptions.push(
+    outputChannel,
     kiteWatcher,
     sourceWatcher,
     inlayHintsRegistration,

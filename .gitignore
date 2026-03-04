@@ -4,3 +4,4 @@
 /node_modules
 /vscode-kite/node_modules
 /vscode-kite/out
+/vscode-kite/.vscode-test

@@ -5,22 +5,22 @@ context ToolingRuntimeContext {
     "Generator" => forbidden
   }
 
-  aggregate KideCli bound to "../crates/kide-cli/src/main.rs" symbol "main" {
-    command checkSpec() bound to "../crates/kide-cli/src/main.rs" symbol "main"
-    command startLsp() bound to "../crates/kide-cli/src/main.rs" symbol "run_lsp"
+  aggregate kiteCli bound to "../crates/kite-cli/src/main.rs" symbol "main" {
+    command checkSpec() bound to "../crates/kite-cli/src/main.rs" symbol "main"
+    command startLsp() bound to "../crates/kite-cli/src/main.rs" symbol "run_lsp"
   }
 
-  aggregate KideLspRuntime bound to "../crates/kide-cli/src/lsp.rs" symbol "run_stdio" {
-    command publishDiagnostics(uri: String) bound to "../crates/kide-cli/src/lsp.rs" symbol "did_open"
-    command gotoDefinition(uri: String) bound to "../crates/kide-cli/src/lsp.rs" symbol "goto_definition"
-    command documentSymbols(uri: String) bound to "../crates/kide-cli/src/lsp.rs" symbol "document_symbol"
-    invariant OpenDocumentsDriveRevalidation bound to "../crates/kide-cli/src/lsp.rs" symbol "did_change"
+  aggregate kiteLspRuntime bound to "../crates/kite-cli/src/lsp.rs" symbol "run_stdio" {
+    command publishDiagnostics(uri: String) bound to "../crates/kite-cli/src/lsp.rs" symbol "did_open"
+    command gotoDefinition(uri: String) bound to "../crates/kite-cli/src/lsp.rs" symbol "goto_definition"
+    command documentSymbols(uri: String) bound to "../crates/kite-cli/src/lsp.rs" symbol "document_symbol"
+    invariant OpenDocumentsDriveRevalidation bound to "../crates/kite-cli/src/lsp.rs" symbol "did_change"
   }
 
-  aggregate CoreBindingRuntime bound to "../crates/kide-core/src/lib.rs" symbol "check_file" {
-    command checkFile(path: String) bound to "../crates/kide-core/src/lib.rs" symbol "check_file"
-    command hoverAt(source: String, baseDir: String, line: Int, column: Int) bound to "../crates/kide-core/src/lib.rs" symbol "hover_at"
-    command formatSource(source: String) bound to "../crates/kide-core/src/formatter.rs" symbol "format_source"
+  aggregate CoreBindingRuntime bound to "../crates/kite-core/src/lib.rs" symbol "check_file" {
+    command checkFile(path: String) bound to "../crates/kite-core/src/lib.rs" symbol "check_file"
+    command hoverAt(source: String, baseDir: String, line: Int, column: Int) bound to "../crates/kite-core/src/lib.rs" symbol "hover_at"
+    command formatSource(source: String) bound to "../crates/kite-core/src/formatter.rs" symbol "format_source"
   }
 }
 
@@ -31,16 +31,16 @@ context ToolingIntegrationContext {
     "SchemaCache" => forbidden
   }
 
-  aggregate VsCodeExtensionIntegration bound to "../vscode-kide/src/extension.ts" symbol "activate" {
-    command activate(context: String) bound to "../vscode-kide/src/extension.ts" symbol "activate"
-    command deactivate() bound to "../vscode-kide/src/extension.ts" symbol "deactivate"
+  aggregate VsCodeExtensionIntegration bound to "../vscode-kite/src/extension.ts" symbol "activate" {
+    command activate(context: String) bound to "../vscode-kite/src/extension.ts" symbol "activate"
+    command deactivate() bound to "../vscode-kite/src/extension.ts" symbol "deactivate"
   }
 
-  aggregate GrammarRegistryOperations bound to "../crates/kide-core/src/grammar_registry.rs" symbol "load" {
-    command loadGrammarRoot(path: String) bound to "../crates/kide-core/src/grammar_registry.rs" symbol "load"
-    command queryFor(language: String, rule: String) bound to "../crates/kide-core/src/grammar_registry.rs" symbol "query_for"
-    command hasLanguage(language: String) bound to "../crates/kide-core/src/grammar_registry.rs" symbol "has_language"
-    invariant MissingManifestSkipsDirectory bound to "../crates/kide-core/src/grammar_registry.rs" symbol "load"
+  aggregate GrammarRegistryOperations bound to "../crates/kite-core/src/grammar_registry.rs" symbol "load" {
+    command loadGrammarRoot(path: String) bound to "../crates/kite-core/src/grammar_registry.rs" symbol "load"
+    command queryFor(language: String, rule: String) bound to "../crates/kite-core/src/grammar_registry.rs" symbol "query_for"
+    command hasLanguage(language: String) bound to "../crates/kite-core/src/grammar_registry.rs" symbol "has_language"
+    invariant MissingManifestSkipsDirectory bound to "../crates/kite-core/src/grammar_registry.rs" symbol "load"
   }
 }
 
@@ -54,6 +54,6 @@ context PackagingWorkflowContext {
   aggregate PackagingWorkflow bound to "../scripts/build-native.sh" symbol "build_native_targets" {
     command buildNativeTargets() bound to "../scripts/build-native.sh" symbol "build_native_targets"
     command buildWasiArtifacts() bound to "../scripts/build-wasm.sh" symbol "build_wasi_artifacts"
-    command compileExtensionAssets() bound to "../vscode-kide/package.json" symbol "name"
+    command compileExtensionAssets() bound to "../vscode-kite/package.json" symbol "name"
   }
 }

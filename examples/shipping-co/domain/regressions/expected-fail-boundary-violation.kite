@@ -3,7 +3,7 @@ context ShippingRegressionBoundaryViolationContext {
     forbid IdentityAccessContext
   }
 
-  aggregate MainSpecProbe bound to "../main.kide" {
-    command inspect() bound to "../main.kide"
+  aggregate MainSpecProbe bound to "../main.kite" {
+    command inspect() bound to "../main.kite"
   }
 }
