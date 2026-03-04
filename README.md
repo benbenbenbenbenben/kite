@@ -251,9 +251,16 @@ Grammar manifests can declare adapter runtime metadata under `[adapter]`, with r
 
 ## Contributing
 
-We are currently building the core `rust-sitter` query adapters for standard languages.
+We are currently expanding support for new languages via the **Grammar Registry**.
 
-* To help build the **Rust Adapter**, check out `src/adapters/rust.rs`.
-* To help build the **TypeScript Adapter**, check out `src/adapters/typescript.rs`.
+To add support for a new language (e.g., Go, Python, C#):
+
+1. **Add the Grammar**: Place the `tree-sitter-<lang>.wasm` file in `grammars/<lang>/`.
+2. **Define the Manifest**: Create `grammars/<lang>/manifest.toml` declaring the extensions and query paths.
+3. **Write Queries**:
+   * `symbol_exists.scm`: A Tree-sitter query that captures the `@name` of declarations (classes, functions, etc.).
+   * `boundary_references`: (Optional) A query in the manifest or a separate file that captures `@reference` tokens for architectural boundary enforcement.
+
+Check out the existing [Rust](grammars/rust/) or [TypeScript](grammars/typescript/) definitions for examples.
 
 **License**: MIT
