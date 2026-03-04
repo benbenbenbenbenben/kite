@@ -143,4 +143,11 @@ suite('Kite VS Code Extension', function () {
       assert.ok(context.children.length > 0, 'Expected context to have children');
     });
   });
+
+  suite('Commands', function () {
+    test('should register kite.findRelatedSpecs command', async () => {
+      const commands = await vscode.commands.getCommands(true);
+      assert.ok(commands.includes('kite.findRelatedSpecs'), 'Command kite.findRelatedSpecs not registered');
+    });
+  });
 });

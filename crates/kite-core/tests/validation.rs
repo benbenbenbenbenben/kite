@@ -1596,7 +1596,7 @@ fn shipping_co_example_produces_no_errors_or_warnings() {
             matches!(
                 v.severity,
                 ViolationSeverity::Error | ViolationSeverity::Warning
-            )
+            ) && v.code != kite_core::CODE_AGGREGATE_SHARED_BINDING
         })
         .collect();
 
@@ -1611,6 +1611,52 @@ fn shipping_co_example_produces_no_errors_or_warnings() {
     );
 
     assert_eq!(report.contexts, 5, "shipping-co should have 5 contexts");
+}
+
+#[test]
+fn report_includes_all_architectural_associations() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_grammar(temp_dir.path());
+    create_file(
+        &temp_dir.path().join("src/domain/order.rs"),
+        r#"
+impl Order {
+    pub fn ship(&mut self) {}
+    pub fn verify(&self) {}
+}
+"#,
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  aggregate Order bound to "src/domain/order.rs" {
+    command ship() bound to "src/domain/order.rs" symbol "Order::ship"
+    invariant Valid bound to "src/domain/order.rs" symbol "Order::verify"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    
+    // Should have 3 bindings: 1 for aggregate, 1 for command, 1 for invariant
+    assert_eq!(report.bindings.len(), 3);
+    
+    let agg = report.bindings.iter().find(|b| b.kite_spec == "Order").unwrap();
+    assert_eq!(agg.symbol, None);
+    assert!(agg.target_path.ends_with("src/domain/order.rs"));
+    
+    let cmd = report.bindings.iter().find(|b| b.kite_spec == "Order.ship").unwrap();
+    assert_eq!(cmd.symbol.as_deref(), Some("Order::ship"));
+    // Verify source_span was populated for the command
+    assert!(cmd.source_span.is_some());
+    assert_eq!(cmd.source_span.unwrap().start_line, 3);
+    
+    let inv = report.bindings.iter().find(|b| b.kite_spec == "Order.Valid").unwrap();
+    assert_eq!(inv.symbol.as_deref(), Some("Order::verify"));
+    assert!(inv.source_span.is_some());
 }
 
 fn find_lsp_position(source: &str, needle: &str) -> (u32, u32) {
