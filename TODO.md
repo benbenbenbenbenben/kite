@@ -5,7 +5,7 @@
 - [x] Validate `hash` clause in shipping-co (add SHA-256 hashes to critical bindings)
 - [x] Validate inline `block` bodies work end-to-end (alternative to `bound to`)
 - [x] Add `Decimal`, `Date`, `Void` primitive coverage to the example
-- [ ] Consider optional `description` strings on aggregates, commands, invariants
+- [x] Consider optional `description` strings on aggregates, commands, invariants
 
 ## Diagnostics & Validation
 
@@ -14,7 +14,7 @@
 - [x] Dictionary: add a bound source that violates a forbidden term to demo the diagnostic
 - [x] Boundary: add a cross-context reference to demo `CONTEXT_BOUNDARY_FORBIDDEN`
 - [x] Explore: warn when two aggregates in different contexts bind to the same file (shared kernel smell)
-- [ ] Explore: detect unused aggregate fields (declared but never referenced)
+- [x] Explore: detect unused aggregate fields (declared but never referenced)
 
 ## LSP
 
