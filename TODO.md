@@ -3,8 +3,8 @@
 ## Language & Parser
 
 - [x] Validate `hash` clause in shipping-co (add SHA-256 hashes to critical bindings)
-- [ ] Validate inline `block` bodies work end-to-end (alternative to `bound to`)
-- [ ] Add `Decimal`, `Date`, `Void` primitive coverage to the example
+- [x] Validate inline `block` bodies work end-to-end (alternative to `bound to`)
+- [x] Add `Decimal`, `Date`, `Void` primitive coverage to the example
 - [ ] Consider optional `description` strings on aggregates, commands, invariants
 
 ## Diagnostics & Validation
