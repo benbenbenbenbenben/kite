@@ -239,14 +239,6 @@ Kite loads Tree-sitter query mappings from `grammars/<language>/manifest.toml`.
 - `grammars/typescript/queries/symbol_exists.scm` is used for TypeScript/TSX symbol existence checks.
 - Prisma grammar assets are vendored in `grammars/prisma/tree-sitter-prisma-1.6.0`.
 
-### Runtime-configurable adapters
-
-Grammar manifests can declare adapter runtime metadata under `[adapter]`, with runtime-specific entries (`[adapter.native]`, `[adapter.wasm]`) that provide `backend_kind` and `module` identifiers.
-
-- **Native path**: use `backend_kind = "wasmtime_wasm"` to run wasm adapters via a Wasmtime host in native builds.
-- **Wasm target path**: use `backend_kind = "js_bridge"` to route adapter calls through a JavaScript bridge when running wasm targets.
-- **Compatibility/fallback**: set `wasm_fallback_to_native = true` to use native adapter metadata when no explicit wasm adapter entry is present.
-
 ---
 
 ## Contributing
