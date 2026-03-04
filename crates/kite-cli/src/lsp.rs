@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, CodeDescription, CompletionItem,
@@ -10,13 +10,12 @@ use tower_lsp::lsp_types::{
     DocumentChangeOperation, DocumentChanges, DocumentSymbol, DocumentSymbolParams,
     DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
     HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InlayHint,
-    InlayHintKind, InlayHintLabel, InlayHintParams, Location, MarkupContent, MarkupKind, MessageType,
-    NumberOrString, OneOf, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
-    ResourceOp, SemanticToken as LspSemanticToken, SemanticTokenType, SemanticTokens,
- SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    InlayHintKind, InlayHintLabel, InlayHintParams, Location, MarkupContent, MarkupKind,
+    MessageType, NumberOrString, OneOf, Position, PrepareRenameResponse, PublishDiagnosticsParams,
+    Range, ResourceOp, SemanticToken as LspSemanticToken, SemanticTokenType, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
+    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{jsonrpc, Client, LanguageServer, LspService, Server};
 
@@ -30,6 +29,7 @@ pub async fn run_stdio() -> Result<()> {
         client,
         open_documents: Mutex::new(HashMap::new()),
         workspace_roots: Mutex::new(Vec::new()),
+        cached_bindings: Arc::new(Mutex::new(Vec::new())),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 
@@ -43,11 +43,11 @@ impl Notification for PublishAssociations {
     const METHOD: &'static str = "kite/publishAssociations";
 }
 
-
 struct Backend {
     client: Client,
     open_documents: Mutex<HashMap<Url, String>>,
     workspace_roots: Mutex<Vec<std::path::PathBuf>>,
+    cached_bindings: Arc<Mutex<Vec<kite_core::BoundSpec>>>,
 }
 
 impl Backend {
@@ -62,6 +62,7 @@ impl Backend {
             .lock()
             .map(|r| r.clone())
             .unwrap_or_default();
+        let cached_bindings = self.cached_bindings.clone();
 
         tokio::spawn(async move {
             // Re-check open documents first
@@ -90,10 +91,15 @@ impl Backend {
             let mut all_bindings = Vec::new();
             let mut all_violations = Vec::new();
             for root in roots {
-                if let Ok(report) = kite_core::check_directory(&root) {
+                if let Ok(report) = kite_core::check_workspace(&root) {
                     all_bindings.extend(report.bindings);
                     all_violations.extend(report.violations);
                 }
+            }
+
+            // Cache bindings for inlay_hint requests
+            if let Ok(mut cache) = cached_bindings.lock() {
+                *cache = all_bindings.clone();
             }
 
             client
@@ -513,10 +519,7 @@ impl LanguageServer for Backend {
         }))
     }
 
-    async fn inlay_hint(
-        &self,
-        params: InlayHintParams,
-    ) -> jsonrpc::Result<Option<Vec<InlayHint>>> {
+    async fn inlay_hint(&self, params: InlayHintParams) -> jsonrpc::Result<Option<Vec<InlayHint>>> {
         let uri = params.text_document.uri;
         let Ok(target_path) = uri.to_file_path() else {
             return Ok(None);
@@ -526,38 +529,34 @@ impl LanguageServer for Backend {
             return Ok(None);
         }
 
-        let roots = self
-            .workspace_roots
+        let bindings = self
+            .cached_bindings
             .lock()
-            .map(|r| r.clone())
+            .map(|b| b.clone())
             .unwrap_or_default();
         let mut hints = Vec::new();
 
-        for root in roots {
-            if let Ok(report) = kite_core::check_directory(&root) {
-                for binding in report.bindings {
-                    if binding.target_path == target_path {
-                        let position = if let Some(span) = binding.source_span {
-                            Position::new(
-                                (span.start_line.saturating_sub(1)) as u32,
-                                (span.start_column.saturating_sub(1)) as u32,
-                            )
-                        } else {
-                            Position::new(0, 0)
-                        };
+        for binding in bindings {
+            if binding.target_path == target_path {
+                let position = if let Some(span) = binding.source_span {
+                    Position::new(
+                        (span.start_line.saturating_sub(1)) as u32,
+                        (span.start_column.saturating_sub(1)) as u32,
+                    )
+                } else {
+                    Position::new(0, 0)
+                };
 
-                        hints.push(InlayHint {
-                            position,
-                            label: InlayHintLabel::String(format!("← {}", binding.kite_spec)),
-                            kind: Some(InlayHintKind::TYPE),
-                            text_edits: None,
-                            tooltip: None,
-                            padding_left: Some(true),
-                            padding_right: None,
-                            data: None,
-                        });
-                    }
-                }
+                hints.push(InlayHint {
+                    position,
+                    label: InlayHintLabel::String(format!("← {}", binding.kite_spec)),
+                    kind: Some(InlayHintKind::TYPE),
+                    text_edits: None,
+                    tooltip: None,
+                    padding_left: Some(true),
+                    padding_right: None,
+                    data: None,
+                });
             }
         }
 
@@ -918,8 +917,10 @@ fn diagnostic_from_violation(violation: kite_core::Violation) -> Diagnostic {
     let code = violation.code;
     let hint = violation.hint;
     let docs_uri = violation.docs_uri;
-    let has_metadata =
-        hint.is_some() || docs_uri.is_some() || violation.source_span.is_some() || violation.kite_spec.is_some();
+    let has_metadata = hint.is_some()
+        || docs_uri.is_some()
+        || violation.source_span.is_some()
+        || violation.kite_spec.is_some();
 
     Diagnostic {
         range,
@@ -1237,7 +1238,9 @@ mod tests {
                 start_column: 30,
                 end_line: 4,
                 end_column: 49,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         };
 
         let range = range_for_violation(&violation);
@@ -1365,7 +1368,9 @@ context TestContext {
                 start_column: 1,
                 end_line: 1,
                 end_column: 2,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         };
 
         let diagnostic = diagnostic_from_violation(violation);
@@ -1399,7 +1404,9 @@ context TestContext {
                 start_column: 1,
                 end_line: 1,
                 end_column: 2,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         };
 
         let diagnostic = diagnostic_from_violation(violation);
@@ -1458,7 +1465,9 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 7,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic.clone()]);
@@ -1493,7 +1502,9 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 7,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic]);
@@ -1527,7 +1538,9 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 14,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic.clone()]);
@@ -1560,7 +1573,9 @@ context SalesContext {
                 start_column: 3,
                 end_line: 2,
                 end_column: 14,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic]);
@@ -1581,7 +1596,9 @@ context SalesContext {
                 start_column: 20,
                 end_line: 2,
                 end_column: 34,
-            }), source_span: None, kite_spec: None, 
+            }),
+            source_span: None,
+            kite_spec: None,
         });
 
         let actions = code_actions_for_diagnostics(&uri, &[diagnostic.clone()]);
@@ -1617,7 +1634,9 @@ context SalesContext {
                     start_column: 10,
                     end_line: 1,
                     end_column: 25,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1631,7 +1650,9 @@ context SalesContext {
                     start_column: 3,
                     end_line: 2,
                     end_column: 7,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1644,7 +1665,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 3,
                     end_column: 13,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
         ];
 
@@ -1703,7 +1726,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: line,
                     end_column: 10,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             })
         })
         .collect::<Vec<_>>();
@@ -1759,7 +1784,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 1,
                     end_column: 2,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1773,7 +1800,9 @@ context SalesContext {
                     start_column: 3,
                     end_line: 2,
                     end_column: 7,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
         ];
 
@@ -1802,7 +1831,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 1,
                     end_column: 2,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Warning,
@@ -1816,7 +1847,9 @@ context SalesContext {
                     start_column: 3,
                     end_line: 2,
                     end_column: 7,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1829,7 +1862,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 3,
                     end_column: 13,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1842,7 +1877,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 4,
                     end_column: 4,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1855,7 +1892,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 5,
                     end_column: 4,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
             diagnostic_from_violation(Violation {
                 severity: ViolationSeverity::Error,
@@ -1868,7 +1907,9 @@ context SalesContext {
                     start_column: 1,
                     end_line: 6,
                     end_column: 4,
-                }), source_span: None, kite_spec: None, 
+                }),
+                source_span: None,
+                kite_spec: None,
             }),
         ];
 

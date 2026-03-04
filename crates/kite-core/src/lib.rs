@@ -209,8 +209,10 @@ pub fn check_directory(dir: &Path) -> Result<CheckReport> {
     }
 
     // Parse each file and collect (filename, contexts) tuples
+    // Also track which contexts came from which file for kite_file population
     let mut all_contexts: Vec<kite_parser::grammar::Context> = Vec::new();
     let mut context_origins: Vec<(String, String)> = Vec::new(); // (context_name, file_name)
+    let mut context_file_paths: Vec<PathBuf> = Vec::new(); // parallel to all_contexts
     let mut violations = Vec::new();
 
     for kite_file in &kite_files {
@@ -224,6 +226,7 @@ pub fn check_directory(dir: &Path) -> Result<CheckReport> {
             .to_string();
         for context in ast.contexts {
             context_origins.push((context.name.text.clone(), file_name.clone()));
+            context_file_paths.push(kite_file.clone());
             all_contexts.push(context);
         }
     }
@@ -239,15 +242,96 @@ pub fn check_directory(dir: &Path) -> Result<CheckReport> {
     let grammar_root = resolve_grammar_root(dir)?;
     let grammar_registry = GrammarRegistry::load(&grammar_root)?;
     let adapter_runtime = AdapterRuntimeEngine::new(&grammar_registry, dir);
-    let (mut program_violations, bindings) =
+    let (mut program_violations, mut bindings) =
         validate_program(&combined, dir, &grammar_registry, &adapter_runtime)?;
     violations.append(&mut program_violations);
+
+    // Stamp each binding with its origin .kite file path.
+    // Match bindings to contexts via kite_spec (aggregate name prefix).
+    for binding in &mut bindings {
+        let agg_name = binding
+            .kite_spec
+            .split('.')
+            .next()
+            .unwrap_or(&binding.kite_spec);
+        for (idx, context) in combined.contexts.iter().enumerate() {
+            let has_aggregate = context
+                .elements
+                .iter()
+                .any(|el| matches!(el, ContextElement::Aggregate(a) if a.name.text == agg_name));
+            if has_aggregate {
+                binding.kite_file = context_file_paths[idx].clone();
+                break;
+            }
+        }
+    }
 
     Ok(CheckReport {
         contexts: combined.contexts.len(),
         violations,
         bindings,
     })
+}
+
+/// Check all `.kite` files in a workspace recursively.
+/// Walks subdirectories and groups `.kite` files by parent directory,
+/// running `check_directory` on each group and merging results.
+pub fn check_workspace(root: &Path) -> Result<CheckReport> {
+    let mut kite_files = Vec::new();
+    walk_for_kite_files(root, &mut kite_files, 0);
+    kite_files.sort();
+
+    if kite_files.is_empty() {
+        anyhow::bail!("no .kite files found in workspace {}", root.display());
+    }
+
+    // Group by parent directory
+    let mut dirs_with_kite: BTreeSet<PathBuf> = BTreeSet::new();
+    for kite_file in &kite_files {
+        if let Some(parent) = kite_file.parent() {
+            dirs_with_kite.insert(parent.to_path_buf());
+        }
+    }
+
+    let mut combined_report = CheckReport {
+        contexts: 0,
+        violations: Vec::new(),
+        bindings: Vec::new(),
+    };
+
+    for dir in dirs_with_kite {
+        match check_directory(&dir) {
+            Ok(report) => {
+                combined_report.contexts += report.contexts;
+                combined_report.violations.extend(report.violations);
+                combined_report.bindings.extend(report.bindings);
+            }
+            Err(_) => continue, // skip dirs that fail (e.g. no grammars)
+        }
+    }
+
+    Ok(combined_report)
+}
+
+fn walk_for_kite_files(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
+    if depth > 10 {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with('.') || name == "node_modules" || name == "target" {
+                continue;
+            }
+            walk_for_kite_files(&path, out, depth + 1);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("kite") {
+            out.push(path);
+        }
+    }
 }
 
 pub fn definition_at(
