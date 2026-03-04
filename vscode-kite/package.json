@@ -1,0 +1,61 @@
+{
+  "name": "kite-vscode",
+  "displayName": "Kite",
+  "description": "VS Code integration for Kite DSL with integrated LSP support.",
+  "version": "0.1.0",
+  "publisher": "kite",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:kite"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "kite",
+        "aliases": [
+          "Kite"
+        ],
+        "extensions": [
+          ".kite"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kite",
+        "scopeName": "source.kite",
+        "path": "./syntaxes/kite.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Kite",
+      "properties": {
+        "kite.server.path": {
+          "type": "string",
+          "default": "kite",
+          "description": "Path to the kite executable used to launch the language server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.7.2"
+  }
+}

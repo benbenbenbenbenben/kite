@@ -12,13 +12,13 @@ build_native_targets() {
   mkdir -p dist/native
 
   for target in "${targets[@]}"; do
-    echo "Building kide for ${target}..."
-    cargo build --release --target "${target}" -p kide-cli
+    echo "Building kite for ${target}..."
+    cargo build --release --target "${target}" -p kite-cli
 
     if [[ "${target}" == *windows* ]]; then
-      cp "target/${target}/release/kide.exe" "dist/native/kide-${target}.exe"
+      cp "target/${target}/release/kite.exe" "dist/native/kite-${target}.exe"
     else
-      cp "target/${target}/release/kide" "dist/native/kide-${target}"
+      cp "target/${target}/release/kite" "dist/native/kite-${target}"
     fi
   done
 }

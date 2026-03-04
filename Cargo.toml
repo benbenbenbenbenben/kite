@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "crates/kide",
-    "crates/kide-cli",
-    "crates/kide-core",
-    "crates/kide-parser",
+    "crates/kite",
+    "crates/kite-cli",
+    "crates/kite-core",
+    "crates/kite-parser",
 ]
 resolver = "2"
 
@@ -24,5 +24,5 @@ tree-sitter = { git = "https://github.com/jaboatman/tree-sitter", branch = "comb
 tempfile = "3.17.1"
 rust-sitter = { git = "https://github.com/benbenbenbenbenben/krust-sitter" }
 
-kide-core = { path = "crates/kide-core" }
-kide-parser = { path = "crates/kide-parser" }
+kite-core = { path = "crates/kite-core" }
+kite-parser = { path = "crates/kite-parser" }

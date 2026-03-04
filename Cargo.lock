@@ -879,31 +879,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
-name = "kide"
+name = "kite"
 version = "0.1.0"
 dependencies = [
- "kide-core",
+ "kite-core",
 ]
 
 [[package]]
-name = "kide-cli"
+name = "kite-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "kide-core",
- "kide-parser",
+ "kite-core",
+ "kite-parser",
  "serde_json",
  "tokio",
  "tower-lsp",
 ]
 
 [[package]]
-name = "kide-core"
+name = "kite-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "kide-parser",
+ "kite-parser",
  "rust-sitter",
  "serde",
  "serde_json",
@@ -914,12 +914,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "kide-parser"
+name = "kite-parser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "rust-sitter",
  "rust-sitter-tool",
+ "serde_json",
 ]
 
 [[package]]

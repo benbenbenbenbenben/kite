@@ -1,4 +1,4 @@
-// Arity demo: processOrder has 3 params but kide declares only 1
+// Arity demo: processOrder has 3 params but kite declares only 1
 
 export interface ArityDemo {
   id: string;

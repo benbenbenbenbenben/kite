@@ -1,4 +1,4 @@
-# Kide TODO
+# Kite TODO
 
 ## Language & Parser
 
@@ -20,9 +20,9 @@
 
 - [x] Hover support: show aggregate/command/invariant docs on hover
 - [x] Completion: suggest context names in `forbid`, symbol names from bound files
-- [x] Rename: rename a command/invariant across the `.kide` file
+- [x] Rename: rename a command/invariant across the `.kite` file
 - [x] Semantic tokens: richer highlighting via LSP (complement TextMate grammar)
-- [x] Workspace diagnostics: check all `.kide` files, not just the open one
+- [x] Workspace diagnostics: check all `.kite` files, not just the open one
 
 ## Grammar Support
 
@@ -35,12 +35,12 @@
 
 - [x] Make dictionary terms actually trigger in bound sources (add realistic violations)
 - [x] Add `hash` clauses to lock down critical service files
-- [x] Add a second `.kide` file (e.g. `infra.kide`) to test multi-file workflows
-- [x] Add integration test that runs `kide check` on shipping-co as a regression gate
+- [x] Add a second `.kite` file (e.g. `infra.kite`) to test multi-file workflows
+- [x] Add integration test that runs `kite check` on shipping-co as a regression gate
 
 ## Tooling & CI
 
-- [x] Add `kide fmt` — auto-formatter for `.kide` files
-- [x] Add `kide init` — scaffold a new domain file from an existing codebase
-- [x] CI: run `cargo test` + `kide check examples/` on every PR
+- [x] Add `kite fmt` — auto-formatter for `.kite` files
+- [x] Add `kite init` — scaffold a new domain file from an existing codebase
+- [x] CI: run `cargo test` + `kite check examples/` on every PR
 - [ ] Publish VS Code extension to marketplace (defer, do not do this)

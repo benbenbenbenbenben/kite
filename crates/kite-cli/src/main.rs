@@ -1,0 +1,109 @@
+#[cfg(not(target_arch = "wasm32"))]
+mod lsp;
+
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(name = "kite", version, about = "Continuous DDD architecture verifier")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Parse and validate .kite spec files (single file or directory).
+    Check {
+        #[arg(default_value = "domain")]
+        file: PathBuf,
+    },
+    /// Auto-format a .kite spec file.
+    Fmt {
+        #[arg(default_value = "domain/main.kite")]
+        file: PathBuf,
+        /// Write changes in place (default: print to stdout)
+        #[arg(long)]
+        write: bool,
+    },
+    /// Scaffold a .kite domain file from an existing codebase.
+    Init {
+        /// Source directory to scan for code files
+        #[arg(default_value = "src")]
+        source: PathBuf,
+        /// Output .kite file path
+        #[arg(short, long, default_value = "domain/main.kite")]
+        output: PathBuf,
+    },
+    /// Start the integrated Language Server Protocol endpoint over stdio.
+    StartLsp,
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Check { file } => {
+            let report = kite_core::check_file(&file)?;
+            if report.violations.is_empty() {
+                println!(
+                    "✨ All contexts crystallized. {} context(s) parsed.",
+                    report.contexts
+                );
+            } else {
+                for violation in &report.violations {
+                    println!(
+                        "{} [{}] {}",
+                        violation.severity.as_str(),
+                        violation.code,
+                        violation.message
+                    );
+                }
+
+                if report.has_errors() {
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::Fmt { file, write } => {
+            let source = std::fs::read_to_string(&file)?;
+            let formatted = kite_core::format_source(&source)?;
+            if write {
+                std::fs::write(&file, &formatted)?;
+                println!("✨ Formatted {}", file.display());
+            } else {
+                print!("{}", formatted);
+            }
+        }
+        Commands::Init { source, output } => {
+            let output_dir = output.parent().unwrap_or_else(|| std::path::Path::new("."));
+            let scaffold = kite_core::scaffold(&source, output_dir)?;
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&output, &scaffold)?;
+            println!(
+                "✨ Scaffolded {} from {}",
+                output.display(),
+                source.display()
+            );
+        }
+        Commands::StartLsp => run_lsp()?,
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn run_lsp() -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(lsp::run_stdio())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn run_lsp() -> Result<()> {
+    Err(anyhow::anyhow!("start-lsp is not available in wasm builds"))
+}

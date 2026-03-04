@@ -2,5 +2,5 @@
 /dist
 /.toolchain
 /node_modules
-/vscode-kide/node_modules
-/vscode-kide/out
+/vscode-kite/node_modules
+/vscode-kite/out

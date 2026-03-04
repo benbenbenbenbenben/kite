@@ -2,13 +2,13 @@ Here is the `README.md` for the repository. It pitches the philosophy, explains 
 
 ---
 
-# 💎 Kide
+# 💎 Kite
 
-> **kide** *(Finnish)*: Crystal. The crystallized, immutable truth of a system.
+> **kite** *(Finnish)*: Crystal. The crystallized, immutable truth of a system.
 
-**Kide is a continuous architecture enforcement tool for Domain-Driven Design (DDD).** It provides a Domain-Specific Language (`.kide`) to define your Bounded Contexts, Aggregates, and Sagas. But unlike traditional Model-Driven tools, **Kide does not generate code.** Instead, it uses [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) (via [this `rust-sitter` fork](https://github.com/benbenbenbenbenben/krust-sitter)) to parse your actual implementation files (currently Rust and TypeScript/TSX) and validates that your codebase structurally matches your architectural design.
+**Kite is a continuous architecture enforcement tool for Domain-Driven Design (DDD).** It provides a Domain-Specific Language (`.kite`) to define your Bounded Contexts, Aggregates, and Sagas. But unlike traditional Model-Driven tools, **Kite does not generate code.** Instead, it uses [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) (via [this `rust-sitter` fork](https://github.com/benbenbenbenbenben/krust-sitter)) to parse your actual implementation files (currently Rust and TypeScript/TSX) and validates that your codebase structurally matches your architectural design.
 
-If your code drifts from your domain model, the Kide compiler fails. **Technical debt is now a syntax error.**
+If your code drifts from your domain model, the Kite compiler fails. **Technical debt is now a syntax error.**
 
 ---
 
@@ -26,11 +26,11 @@ The whiteboard lied. The code is the only truth.
 
 ## The Solution: Binding Contracts
 
-Kide flips the script. You define the rules of the domain in a `.kide` file, and **bind** those rules to your implementation files. Kide acts as a Meta-Language Server, constantly diffing your Domain Abstract Syntax Tree against your Code Concrete Syntax Tree.
+Kite flips the script. You define the rules of the domain in a `.kite` file, and **bind** those rules to your implementation files. Kite acts as a Meta-Language Server, constantly diffing your Domain Abstract Syntax Tree against your Code Concrete Syntax Tree.
 
-### 1. Write the Domain Spec (`sales.kide`)
+### 1. Write the Domain Spec (`sales.kite`)
 
-```kide
+```kite
 context SalesContext {
     dictionary {
         "User" => forbidden // We use 'Customer' here
@@ -52,11 +52,11 @@ context SalesContext {
 
 ### 2. Write your Code (`src/domain/order.rs`)
 
-Write your code however you like. Kide only cares about the structural contract.
+Write your code however you like. Kite only cares about the structural contract.
 
 ```rust
 impl Order {
-    // Kide verifies the bound symbol exists in the target file
+    // Kite verifies the bound symbol exists in the target file
     pub fn ship(&mut self) -> Result<(), DomainError> {
         self.verify_not_empty()?;
         self.status = OrderStatus::Shipped;
@@ -76,10 +76,10 @@ impl Order {
 
 ### 3. Run the Verifier
 
-Run Kide in your CI/CD pipeline or as an LSP in your editor.
+Run Kite in your CI/CD pipeline or as an LSP in your editor.
 
 ```bash
-$ kide check
+$ kite check
 
 🔍 Analyzing Domain: SalesContext
 ✅ Dictionary verified.
@@ -103,10 +103,10 @@ pub fn ship(&mut self, bypass_checks: bool) { ... }
 
 ```
 
-Kide catches this instantly using structural AST diffing:
+Kite catches this instantly using structural AST diffing:
 
 ```bash
-$ kide check
+$ kite check
 
 ❌ DRIFT DETECTED IN SalesContext
 
@@ -118,7 +118,7 @@ The bound method `Order::ship` signature does not match the Domain Spec.
   Found:    ship(bypass_checks: bool)
 
 Architectural rule broken: State mutation commands cannot accept arbitrary control flags.
-Update your .kide file if the business rules have changed, or revert the code.
+Update your .kite file if the business rules have changed, or revert the code.
 
 ```
 
@@ -126,25 +126,25 @@ Update your .kide file if the business rules have changed, or revert the code.
 
 ## How it Works (Under the Hood)
 
-Kide is built in **Rust** and leverages `rust-sitter`.
+Kite is built in **Rust** and leverages `rust-sitter`.
 
-1. **The Parser**: Parses `.kide` files into a strongly-typed Domain AST.
+1. **The Parser**: Parses `.kite` files into a strongly-typed Domain AST.
 2. **The Adapter Engine**: Reads the `bound to` directives and loads the appropriate Tree-sitter grammar (e.g., `tree-sitter-rust`, `tree-sitter-typescript`).
 3. **The Query Engine**: Runs pre-compiled S-expression (`.scm`) queries against your source files to find classes, structs, methods, and parameters.
-4. **The Validator**: Compares the shapes. If the Domain expects an Immutable Value Object, Kide verifies the Rust struct has no mutable `&mut self` methods exposed.
+4. **The Validator**: Compares the shapes. If the Domain expects an Immutable Value Object, Kite verifies the Rust struct has no mutable `&mut self` methods exposed.
 
 ---
 
 ## The Ecosystem
 
-Kide is part of the **K-Stack**, a suite of tools designed for high-assurance, easily modeled distributed systems:
+Kite is part of the **K-Stack**, a suite of tools designed for high-assurance, easily modeled distributed systems:
 
 * **Kodus**: The secure server runtime (Home).
 * **Kettu**: The agile, WASM-native implementation language (Fox).
 * **Karu**: The strict security and authorization policy language (Bear).
-* **Kide**: The structural domain and architecture verifier (Crystal).
+* **Kite**: The structural domain and architecture verifier (Crystal).
 
-*(Note: Kide works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)*
+*(Note: Kite works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)*
 
 ---
 
@@ -153,36 +153,36 @@ Kide is part of the **K-Stack**, a suite of tools designed for high-assurance, e
 ### Installation
 
 ```bash
-cargo build --release -p kide-cli
+cargo build --release -p kite-cli
 ```
 
 ### Usage
 
-Validate a `.kide` file:
+Validate a `.kite` file:
 
 ```bash
-kide check domain/main.kide
+kite check domain/main.kite
 ```
 
 Start the integrated LSP server (stdio transport):
 
 ```bash
-kide start-lsp
+kite start-lsp
 ```
 
 ### Diagnostics and editor metadata
 
-- `kide check` emits stable diagnostic codes with severity, e.g. `error [BINDING_SYMBOL_NOT_FOUND] ...`.
+- `kite check` emits stable diagnostic codes with severity, e.g. `error [BINDING_SYMBOL_NOT_FOUND] ...`.
 - Dictionary rules run against source files bound within each context (`aggregate`, `command`, and `invariant` bindings).
 - `"Term" => forbidden` emits `error [DICTIONARY_TERM_FORBIDDEN]`.
 - `"Term" => "Preferred"` emits `warning [DICTIONARY_TERM_PREFERRED]` with a replacement hint.
 - Duplicate dictionary keys in the same block emit `error [DICTIONARY_DUPLICATE_KEY]`.
-- `boundary { forbid OtherContext }` emits `error [CONTEXT_BOUNDARY_FORBIDDEN]` when forbidden context dependencies are referenced from bound Rust/TypeScript/TSX source files (imports/uses, type references, and call/new references); if structured extraction fails, Kide falls back to token matching.
+- `boundary { forbid OtherContext }` emits `error [CONTEXT_BOUNDARY_FORBIDDEN]` when forbidden context dependencies are referenced from bound Rust/TypeScript/TSX source files (imports/uses, type references, and call/new references); if structured extraction fails, Kite falls back to token matching.
 - Duplicate `forbid` entries in the same boundary block emit `error [CONTEXT_BOUNDARY_DUPLICATE_FORBID]`.
 - `boundary` self-forbid entries (`forbid CurrentContextName`) emit `warning [CONTEXT_BOUNDARY_SELF_FORBID]` with a fix hint.
-- If a `bound to` file is missing, Kide emits `error [BINDING_FILE_NOT_FOUND]` plus `warning [BINDING_SYMBOL_UNVERIFIED_DEPENDENCY]` for dependent `symbol` checks.
-- `hash "<value>"` must be lowercase SHA-256 hex (`64` chars) or Kide emits `error [BINDING_HASH_INVALID_FORMAT]`.
-- If a bound file exists and `hash` is present, Kide compares the declared hash against file contents and emits `error [BINDING_HASH_MISMATCH]` when they differ.
+- If a `bound to` file is missing, Kite emits `error [BINDING_FILE_NOT_FOUND]` plus `warning [BINDING_SYMBOL_UNVERIFIED_DEPENDENCY]` for dependent `symbol` checks.
+- `hash "<value>"` must be lowercase SHA-256 hex (`64` chars) or Kite emits `error [BINDING_HASH_INVALID_FORMAT]`.
+- If a bound file exists and `hash` is present, Kite compares the declared hash against file contents and emits `error [BINDING_HASH_MISMATCH]` when they differ.
 - `error [BINDING_SYMBOL_NOT_FOUND]` includes a nearest-symbol hint when a close declaration exists in supported bound files.
 - `error [COMMAND_BINDING_ARITY_MISMATCH]` is emitted when a command's parameter count does not match a bound symbol's arity in Rust (`.rs`), TypeScript/TSX (`.ts`, `.tsx`), or Prisma (`.prisma` declarations are treated as zero-arity).
 - `warning [COMMAND_BINDING_INTENT_SUSPICIOUS]` is emitted when a write-oriented command (e.g. `create`, `ship`, `delete`) is bound to a read-oriented symbol (e.g. `get*`, `list*`, `find*`, `read*`).
@@ -205,8 +205,8 @@ Native single-file executables:
 
 WASI artifacts:
 
-- `kide-cli.wasm` (CLI flavor, built from `kide-cli`)
-- `kide.wasm` (runtime flavor, built from `kide`)
+- `kite-cli.wasm` (CLI flavor, built from `kite-cli`)
+- `kite.wasm` (runtime flavor, built from `kite`)
 
 Build scripts:
 
@@ -219,7 +219,7 @@ Build scripts:
 
 ### VS Code extension
 
-`vscode-kide/` contains the extension that launches `kide start-lsp`.
+`vscode-kite/` contains the extension that launches `kite start-lsp`.
 
 - Debug config: `.vscode/launch.json`
 - Build/watch tasks: `.vscode/tasks.json`
@@ -227,14 +227,14 @@ Build scripts:
 Run extension compile manually:
 
 ```bash
-cd vscode-kide
+cd vscode-kite
 npm install
 npm run compile
 ```
 
 ### Grammar registry
 
-Kide loads Tree-sitter query mappings from `grammars/<language>/manifest.toml`.
+Kite loads Tree-sitter query mappings from `grammars/<language>/manifest.toml`.
 
 - Rust grammar assets are vendored in `grammars/rust/tree-sitter-rust-0.24.0`.
 - `grammars/rust/queries/symbol_exists.scm` is used for symbol existence checks.

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Program",
+  "scopeName": "source.kite",
+  "patterns": [
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#identifiers"
+    },
+    {
+      "begin": "\\{",
+      "end": "\\}",
+      "name": "meta.block.brace.kite",
+      "patterns": [
+        {
+          "include": "$self"
+        }
+      ]
+    }
+  ],
+  "repository": {
+    "keywords": {
+      "patterns": [
+        {
+          "match": "\\b(?:context|dictionary|boundary|forbid|forbidden|aggregate|String|Int|Decimal|Boolean|Date|Timestamp|Void|command|invariant|bound|to|symbol|hash)\\b",
+          "name": "keyword.control.kite"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "match": "\\{|\\}|=>|:|\\(|,|\\)",
+          "name": "keyword.operator.kite"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "match": "\"([^\"\\\\]|\\\\.)*\"",
+          "name": "string.quoted.kite"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "match": "[a-zA-Z_][a-zA-Z0-9_]*",
+          "name": "variable.other.kite"
+        }
+      ]
+    }
+  }
+}

@@ -35,11 +35,11 @@ build_wasi_artifacts() {
 
   rustup target add wasm32-wasip1
 
-  cargo build --release --target wasm32-wasip1 -p kide-cli
-  cp target/wasm32-wasip1/release/kide.wasm dist/wasm/kide-cli.wasm
+  cargo build --release --target wasm32-wasip1 -p kite-cli
+  cp target/wasm32-wasip1/release/kite.wasm dist/wasm/kite-cli.wasm
 
-  cargo build --release --target wasm32-wasip1 -p kide
-  cp target/wasm32-wasip1/release/kide.wasm dist/wasm/kide.wasm
+  cargo build --release --target wasm32-wasip1 -p kite
+  cp target/wasm32-wasip1/release/kite.wasm dist/wasm/kite.wasm
 }
 
 build_wasi_artifacts "$@"

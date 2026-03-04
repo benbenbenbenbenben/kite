@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CASES=(
-  "shipping-co/domain/regressions/expected-pass-minimal.kide:pass"
-  "shipping-co/domain/regressions/expected-fail-missing-symbol.kide:fail"
-  "shipping-co/domain/regressions/expected-fail-arity-mismatch.kide:fail"
-  "shipping-co/domain/regressions/expected-fail-boundary-violation.kide:fail"
+  "shipping-co/domain/regressions/expected-pass-minimal.kite:pass"
+  "shipping-co/domain/regressions/expected-fail-missing-symbol.kite:fail"
+  "shipping-co/domain/regressions/expected-fail-arity-mismatch.kite:fail"
+  "shipping-co/domain/regressions/expected-fail-boundary-violation.kite:fail"
 )
 
 failures=0
@@ -16,7 +16,7 @@ for case_def in "${CASES[@]}"; do
   file_path="$ROOT_DIR/$file_rel"
 
   set +e
-  output="$(cargo run -q -p kide-cli -- check "$file_path" 2>&1)"
+  output="$(cargo run -q -p kite-cli -- check "$file_path" 2>&1)"
   exit_code=$?
   set -e
 

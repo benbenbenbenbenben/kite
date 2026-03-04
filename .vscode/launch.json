@@ -2,16 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Kide VS Code Extension",
+      "name": "Run Kite VS Code Extension",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/vscode-kide",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-kite",
         "${workspaceFolder}/examples"
       ],
-      "outFiles": ["${workspaceFolder}/vscode-kide/out/**/*.js"],
-      "preLaunchTask": "kide-extension: debug prep"
+      "outFiles": ["${workspaceFolder}/vscode-kite/out/**/*.js"],
+      "preLaunchTask": "kite-extension: debug prep"
     }
   ]
 }

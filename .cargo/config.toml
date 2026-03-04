@@ -8,5 +8,5 @@ rustflags = ["-C", "target-feature=+crt-static"]
 rustflags = ["-C", "target-feature=+crt-static"]
 
 [alias]
-build-cli-wasm = "build --release --target wasm32-wasip1 -p kide-cli"
-build-runtime-wasm = "build --release --target wasm32-wasip1 -p kide"
+build-cli-wasm = "build --release --target wasm32-wasip1 -p kite-cli"
+build-runtime-wasm = "build --release --target wasm32-wasip1 -p kite"
