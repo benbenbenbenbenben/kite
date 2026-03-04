@@ -79,14 +79,7 @@ Run Kite in your CI/CD pipeline or as an LSP in your editor.
 ```bash
 $ kite check
 
-🔍 Analyzing Domain: SalesContext
-✅ Dictionary verified.
-✅ Aggregate 'Order' found in src/domain/order.rs.
-✅ Command 'ship()' signature matches implementation.
-✅ Invariant 'MustHaveItems' verified.
-
-🪁 All contexts verified. 0 Drift detected.
-
+🪁 All contexts verified. 1 context(s) parsed.
 ```
 
 ---
@@ -98,7 +91,6 @@ Imagine a junior developer tries to add a shortcut to the Rust code by adding ar
 ```rust
 // Developer modifies the Rust code:
 pub fn ship(&mut self, bypass_checks: bool) { ... }
-
 ```
 
 Kite catches this instantly using structural AST diffing:
@@ -106,18 +98,15 @@ Kite catches this instantly using structural AST diffing:
 ```bash
 $ kite check
 
-❌ DRIFT DETECTED IN SalesContext
+error [COMMAND_BINDING_ARITY_MISMATCH] command 'ship' declares 0 parameter(s), but Rust symbol 'Order::ship' expects 1 parameter(s)
 
-🔗 Binding Violation in aggregate 'Order'
-   -> src/domain/order.rs
+pub fn ship(&mut self, bypass_checks: bool) -> Result<(), DomainError> {
 
-The bound method `Order::ship` signature does not match the Domain Spec.
-  Expected: ship()
-  Found:    ship(bypass_checks: bool)
+Source: src/domain/order.rs:12:8
+  → at line 12, col 17
+  hint: adjust command parameters to 1 or bind to a Rust symbol that accepts 0 parameter(s)
 
-Architectural rule broken: State mutation commands cannot accept arbitrary control flags.
-Update your .kite file if the business rules have changed, or revert the code.
-
+🪁 Verified 1 context(s) with 1 error(s), 0 warnings.
 ```
 
 ---

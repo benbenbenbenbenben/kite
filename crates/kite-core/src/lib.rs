@@ -79,7 +79,7 @@ pub const DOCS_AGGREGATE_FIELD_UNUSED: &str =
 pub const CODE_DUPLICATE_CONTEXT: &str = "DUPLICATE_CONTEXT";
 pub const DOCS_DUPLICATE_CONTEXT: &str = "https://docs.kite.dev/diagnostics/duplicate-context";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum ViolationSeverity {
     Error,
     Warning,
@@ -96,7 +96,7 @@ impl ViolationSeverity {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub struct ViolationSpan {
     pub start_line: usize,
     pub start_column: usize,
@@ -104,7 +104,7 @@ pub struct ViolationSpan {
     pub end_column: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Violation {
     pub severity: ViolationSeverity,
     pub code: &'static str,
@@ -130,7 +130,7 @@ impl Violation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct CheckReport {
     pub contexts: usize,
     pub violations: Vec<Violation>,

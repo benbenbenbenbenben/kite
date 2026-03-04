@@ -56,8 +56,8 @@
 
 ## CLI & Reporting
 
-- [ ] Improve CLI text output to be more attractive and readable (richer formatting, clearer hierarchy)
-- [ ] Add `--format` flag to `kite check` for multiple reporting formats:
+- [x] Improve CLI text output to be more attractive and readable (richer formatting, clearer hierarchy)
+- [x] Add `--format` flag to `kite check` for multiple reporting formats:
   - `human` (default, enhanced text)
   - `tap` (Test Anything Protocol)
   - `ctrf` (Common Test Report Format JSON)
