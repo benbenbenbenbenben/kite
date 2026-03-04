@@ -137,9 +137,9 @@ Kite is built in **Rust** and leverages `rust-sitter`.
 
 Kite is part of the **kodus ecosystem**, a suite of tools designed for high-assurance, easily modeled distributed systems:
 
-* **Kodus**: The secure server runtime (Home).
-* **Kettu**: The agile, WASM-native implementation language (Fox).
-* **Karu**: The strict security and authorization policy language (Bear).
+* **Kodus**: The secure server runtime.
+* **Kettu**: The agile, WASM-native implementation language.
+* **Karu**: The strict security and authorization policy language.
 * **Kite**: The structural domain and architecture verifier.
 
 *(Note: Kite works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)*
