@@ -73,6 +73,9 @@ pub const DOCS_BINDING_SYMBOL_MISSING: &str =
 pub const CODE_AGGREGATE_SHARED_BINDING: &str = "AGGREGATE_SHARED_BINDING";
 pub const DOCS_AGGREGATE_SHARED_BINDING: &str =
     "https://docs.kide.dev/diagnostics/aggregate-shared-binding";
+pub const CODE_AGGREGATE_FIELD_UNUSED: &str = "AGGREGATE_FIELD_UNUSED";
+pub const DOCS_AGGREGATE_FIELD_UNUSED: &str =
+    "https://docs.kide.dev/diagnostics/aggregate-field-unused";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViolationSeverity {
@@ -997,6 +1000,64 @@ fn collect_context_bound_sources(
     Ok(bound_sources)
 }
 
+fn collect_aggregate_bound_sources(aggregate: &Aggregate, base_dir: &Path) -> Vec<BoundSource> {
+    let mut seen = HashSet::new();
+    let mut bound_sources = Vec::new();
+
+    // Collect from aggregate binding
+    if let Some(binding) = &aggregate.binding {
+        if let Some(bs) = try_read_bound_source(binding, base_dir, &mut seen) {
+            bound_sources.push(bs);
+        }
+    }
+
+    // Collect from command/invariant bindings
+    for member in &aggregate.members {
+        let binding = match member {
+            AggregateMember::Command(cmd) => {
+                if let RuleBody::Binding(b) = &cmd.body {
+                    Some(b)
+                } else {
+                    None
+                }
+            }
+            AggregateMember::Invariant(inv) => {
+                if let RuleBody::Binding(b) = &inv.body {
+                    Some(b)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        if let Some(binding) = binding {
+            if let Some(bs) = try_read_bound_source(binding, base_dir, &mut seen) {
+                bound_sources.push(bs);
+            }
+        }
+    }
+
+    bound_sources
+}
+
+fn try_read_bound_source(
+    binding: &Binding,
+    base_dir: &Path,
+    seen: &mut HashSet<PathBuf>,
+) -> Option<BoundSource> {
+    let target = unquote(&binding.target.text);
+    let target_path = resolve_bound_path(base_dir, &target);
+    if !target_path.exists() || !seen.insert(target_path.clone()) {
+        return None;
+    }
+    let source = std::fs::read_to_string(&target_path).ok()?;
+    Some(BoundSource {
+        path: target_path,
+        source,
+        fallback_span: span_from_binding_target(binding),
+    })
+}
+
 fn validate_dictionary(
     context: &DomainContext,
     dictionary: &Dictionary,
@@ -1256,6 +1317,42 @@ fn validate_aggregate(
             AggregateMember::Field(_) => {}
         }
     }
+
+    // Check for unused fields: see if each field name appears in any bound source
+    let fields: Vec<&kide_parser::grammar::Field> = aggregate
+        .members
+        .iter()
+        .filter_map(|m| match m {
+            AggregateMember::Field(f) => Some(f),
+            _ => None,
+        })
+        .collect();
+    if !fields.is_empty() {
+        let bound_sources = collect_aggregate_bound_sources(aggregate, base_dir);
+        for field in &fields {
+            let field_name = &field.name.text;
+            let found = bound_sources
+                .iter()
+                .any(|s| contains_term_with_word_boundaries(&s.source, field_name));
+            if !found && !bound_sources.is_empty() {
+                violations.push(Violation {
+                    severity: ViolationSeverity::Information,
+                    code: CODE_AGGREGATE_FIELD_UNUSED,
+                    message: format!(
+                        "field '{}' in aggregate '{}' does not appear in any bound source",
+                        field_name, aggregate.name.text
+                    ),
+                    hint: Some(format!(
+                        "remove '{}' if it is no longer needed, or add it to the bound implementation",
+                        field_name
+                    )),
+                    docs_uri: Some(DOCS_AGGREGATE_FIELD_UNUSED),
+                    span: None,
+                });
+            }
+        }
+    }
+
     Ok(())
 }
 

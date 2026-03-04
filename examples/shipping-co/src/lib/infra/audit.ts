@@ -5,6 +5,9 @@ export interface AuditTrail {
   action: string;
   actorId: string;
   recordedAt: Date;
+  severity: number;
+  eventDate: Date;
+  returnType: void;
 }
 
 export async function recordAuditEntry(
