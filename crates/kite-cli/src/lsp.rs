@@ -97,58 +97,33 @@ impl Backend {
                 )
                 .await;
 
-            // Publish associations for the entire workspace
-            client
-                .log_message(
-                    MessageType::INFO,
-                    "[kite] checking workspace for associations".to_string(),
-                )
-                .await;
+            // Collect bindings for the entire workspace (fast path: parse-only, no validation)
             let mut all_bindings = Vec::new();
-            let mut all_violations = Vec::new();
             for root in &roots {
-                client
-                    .log_message(
-                        MessageType::INFO,
-                        format!("[kite]   check_workspace({})...", root.display()),
-                    )
-                    .await;
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    kite_core::check_workspace(root)
-                }));
-                match result {
-                    Ok(Ok(report)) => {
+                match kite_core::collect_workspace_bindings(root) {
+                    Ok(bindings) => {
                         client
                             .log_message(
                                 MessageType::INFO,
                                 format!(
-                                    "[kite]   => {} bindings, {} violations",
-                                    report.bindings.len(),
-                                    report.violations.len()
+                                    "[kite] collected {} bindings from {}",
+                                    bindings.len(),
+                                    root.display()
                                 ),
                             )
                             .await;
-                        all_bindings.extend(report.bindings);
-                        all_violations.extend(report.violations);
+                        all_bindings.extend(bindings);
                     }
-                    Ok(Err(err)) => {
+                    Err(err) => {
                         client
                             .log_message(
                                 MessageType::WARNING,
-                                format!("[kite]   => error: {:#}", err),
+                                format!(
+                                    "[kite] collect_workspace_bindings({}) failed: {:#}",
+                                    root.display(),
+                                    err
+                                ),
                             )
-                            .await;
-                    }
-                    Err(panic_info) => {
-                        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
-                            s.clone()
-                        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
-                            s.to_string()
-                        } else {
-                            "unknown panic".to_string()
-                        };
-                        client
-                            .log_message(MessageType::ERROR, format!("[kite]   => PANIC: {}", msg))
                             .await;
                     }
                 }
@@ -163,11 +138,7 @@ impl Backend {
             client
                 .log_message(
                     MessageType::INFO,
-                    format!(
-                        "[kite] publishing: {} bindings, {} violations",
-                        all_bindings.len(),
-                        all_violations.len()
-                    ),
+                    format!("[kite] publishing {} bindings", all_bindings.len()),
                 )
                 .await;
 
@@ -179,7 +150,7 @@ impl Backend {
             client
                 .send_notification::<PublishAssociations>(serde_json::json!({
                     "bindings": all_bindings,
-                    "violations": all_violations,
+                    "violations": [],
                 }))
                 .await;
         });

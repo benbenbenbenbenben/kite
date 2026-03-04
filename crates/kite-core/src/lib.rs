@@ -313,6 +313,112 @@ pub fn check_workspace(root: &Path) -> Result<CheckReport> {
     Ok(combined_report)
 }
 
+/// Collect binding metadata from all `.kite` files in a workspace recursively.
+/// This is a fast path that ONLY parses `.kite` files and extracts binding
+/// information — no grammar loading, no WASM, no validation.
+/// Intended for the LSP decoration pipeline where we just need spec→file mappings.
+pub fn collect_workspace_bindings(root: &Path) -> Result<Vec<BoundSpec>> {
+    let mut kite_files = Vec::new();
+    walk_for_kite_files(root, &mut kite_files, 0);
+    kite_files.sort();
+
+    if kite_files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut all_bindings = Vec::new();
+
+    // Group by parent directory for correct path resolution
+    let mut dirs_with_kite: BTreeSet<PathBuf> = BTreeSet::new();
+    for kite_file in &kite_files {
+        if let Some(parent) = kite_file.parent() {
+            dirs_with_kite.insert(parent.to_path_buf());
+        }
+    }
+
+    for dir in dirs_with_kite {
+        // Find .kite files in this specific directory
+        let dir_kite_files: Vec<_> = kite_files
+            .iter()
+            .filter(|f| f.parent() == Some(dir.as_path()))
+            .collect();
+
+        for kite_file in dir_kite_files {
+            let Ok(source) = std::fs::read_to_string(kite_file) else {
+                continue;
+            };
+            let Ok(ast) = kite_parser::parse(&source) else {
+                continue;
+            };
+
+            for context in &ast.contexts {
+                for element in &context.elements {
+                    let ContextElement::Aggregate(aggregate) = element else {
+                        continue;
+                    };
+                    if let Some(binding) = &aggregate.binding {
+                        let target = unquote(&binding.target.text);
+                        let target_path = resolve_bound_path(&dir, &target);
+                        all_bindings.push(BoundSpec {
+                            kite_spec: aggregate.name.text.clone(),
+                            target_path,
+                            symbol: None,
+                            kite_file: kite_file.clone(),
+                            kite_span: span_from_position(&binding.target.position),
+                            source_span: None,
+                        });
+                    }
+                    for member in &aggregate.members {
+                        match member {
+                            AggregateMember::Command(command) => {
+                                if let RuleBody::Binding(binding) = &command.body {
+                                    let target = unquote(&binding.target.text);
+                                    let target_path = resolve_bound_path(&dir, &target);
+                                    let symbol =
+                                        binding.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                                    all_bindings.push(BoundSpec {
+                                        kite_spec: format!(
+                                            "{}.{}",
+                                            aggregate.name.text, command.name.text
+                                        ),
+                                        target_path,
+                                        symbol,
+                                        kite_file: kite_file.clone(),
+                                        kite_span: span_from_position(&binding.target.position),
+                                        source_span: None,
+                                    });
+                                }
+                            }
+                            AggregateMember::Invariant(invariant) => {
+                                if let RuleBody::Binding(binding) = &invariant.body {
+                                    let target = unquote(&binding.target.text);
+                                    let target_path = resolve_bound_path(&dir, &target);
+                                    let symbol =
+                                        binding.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                                    all_bindings.push(BoundSpec {
+                                        kite_spec: format!(
+                                            "{}.{}",
+                                            aggregate.name.text, invariant.name.text
+                                        ),
+                                        target_path,
+                                        symbol,
+                                        kite_file: kite_file.clone(),
+                                        kite_span: span_from_position(&binding.target.position),
+                                        source_span: None,
+                                    });
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(all_bindings)
+}
+
 fn walk_for_kite_files(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     if depth > 10 {
         return;
