@@ -1640,21 +1640,33 @@ context SalesContext {
     );
 
     let report = check_file(&kite_path).unwrap();
-    
+
     // Should have 3 bindings: 1 for aggregate, 1 for command, 1 for invariant
     assert_eq!(report.bindings.len(), 3);
-    
-    let agg = report.bindings.iter().find(|b| b.kite_spec == "Order").unwrap();
+
+    let agg = report
+        .bindings
+        .iter()
+        .find(|b| b.kite_spec == "Order")
+        .unwrap();
     assert_eq!(agg.symbol, None);
     assert!(agg.target_path.ends_with("src/domain/order.rs"));
-    
-    let cmd = report.bindings.iter().find(|b| b.kite_spec == "Order.ship").unwrap();
+
+    let cmd = report
+        .bindings
+        .iter()
+        .find(|b| b.kite_spec == "Order.ship")
+        .unwrap();
     assert_eq!(cmd.symbol.as_deref(), Some("Order::ship"));
     // Verify source_span was populated for the command
     assert!(cmd.source_span.is_some());
     assert_eq!(cmd.source_span.unwrap().start_line, 3);
-    
-    let inv = report.bindings.iter().find(|b| b.kite_spec == "Order.Valid").unwrap();
+
+    let inv = report
+        .bindings
+        .iter()
+        .find(|b| b.kite_spec == "Order.Valid")
+        .unwrap();
     assert_eq!(inv.symbol.as_deref(), Some("Order::verify"));
     assert!(inv.source_span.is_some());
 }
@@ -1668,4 +1680,64 @@ fn find_lsp_position(source: &str, needle: &str) -> (u32, u32) {
         .map(|(_, rest)| rest.chars().count() as u32)
         .unwrap_or(prefix.chars().count() as u32);
     (line, column)
+}
+
+#[test]
+fn check_workspace_finds_kite_files_in_subdirectories() {
+    let temp_dir = TempDir::new().unwrap();
+
+    // Put .kite file in a subdirectory, not at root
+    create_file(
+        &temp_dir.path().join("domain/main.kite"),
+        r#"context SalesContext {
+  aggregate Order bound to "src/domain/order.rs" {}
+}
+"#,
+    );
+    create_file(
+        &temp_dir.path().join("domain/src/domain/order.rs"),
+        "pub struct Order {}\n",
+    );
+
+    let report = kite_core::check_workspace(temp_dir.path()).unwrap();
+    assert_eq!(report.contexts, 1);
+    assert!(
+        !report.bindings.is_empty(),
+        "check_workspace should find bindings in subdirectory .kite files"
+    );
+
+    let binding = &report.bindings[0];
+    assert_eq!(binding.kite_spec, "Order");
+    assert!(
+        binding.target_path.ends_with("src/domain/order.rs"),
+        "target_path should end with src/domain/order.rs, got: {}",
+        binding.target_path.display()
+    );
+    assert!(
+        binding.kite_file.ends_with("domain/main.kite"),
+        "kite_file should be populated, got: {}",
+        binding.kite_file.display()
+    );
+}
+
+#[test]
+fn check_workspace_shipping_co_produces_bindings() {
+    let example_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/shipping-co");
+    if !example_path.join("domain/main.kite").exists() {
+        eprintln!("skipping: shipping-co example not found");
+        return;
+    }
+
+    let report = kite_core::check_workspace(&example_path).unwrap();
+    assert!(report.contexts > 0, "should find contexts");
+    assert!(!report.bindings.is_empty(), "should find bindings");
+
+    // All bindings should have kite_file populated
+    for binding in &report.bindings {
+        assert!(
+            !binding.kite_file.as_os_str().is_empty(),
+            "kite_file should be populated for spec '{}', got empty",
+            binding.kite_spec
+        );
+    }
 }

@@ -65,6 +65,25 @@ impl Backend {
         let cached_bindings = self.cached_bindings.clone();
 
         tokio::spawn(async move {
+            client
+                .log_message(
+                    MessageType::INFO,
+                    format!(
+                        "[kite] spawn_workspace_diagnostics: {} roots, {} kite files found",
+                        roots.len(),
+                        kite_files.len()
+                    ),
+                )
+                .await;
+            for root in &roots {
+                client
+                    .log_message(
+                        MessageType::INFO,
+                        format!("[kite]   root: {}", root.display()),
+                    )
+                    .await;
+            }
+
             // Re-check open documents first
             for (uri, text) in &open_docs {
                 let diagnostics = diagnostics_for_source(text, uri);
@@ -90,12 +109,48 @@ impl Backend {
             // Finally, publish all associations for the entire workspace
             let mut all_bindings = Vec::new();
             let mut all_violations = Vec::new();
-            for root in roots {
-                if let Ok(report) = kite_core::check_workspace(&root) {
-                    all_bindings.extend(report.bindings);
-                    all_violations.extend(report.violations);
+            for root in &roots {
+                match kite_core::check_workspace(root) {
+                    Ok(report) => {
+                        client
+                            .log_message(
+                                MessageType::INFO,
+                                format!(
+                                    "[kite] check_workspace({}) => {} bindings, {} violations",
+                                    root.display(),
+                                    report.bindings.len(),
+                                    report.violations.len()
+                                ),
+                            )
+                            .await;
+                        all_bindings.extend(report.bindings);
+                        all_violations.extend(report.violations);
+                    }
+                    Err(err) => {
+                        client
+                            .log_message(
+                                MessageType::WARNING,
+                                format!(
+                                    "[kite] check_workspace({}) failed: {}",
+                                    root.display(),
+                                    err
+                                ),
+                            )
+                            .await;
+                    }
                 }
             }
+
+            client
+                .log_message(
+                    MessageType::INFO,
+                    format!(
+                        "[kite] publishing associations: {} bindings, {} violations",
+                        all_bindings.len(),
+                        all_violations.len()
+                    ),
+                )
+                .await;
 
             // Cache bindings for inlay_hint requests
             if let Ok(mut cache) = cached_bindings.lock() {

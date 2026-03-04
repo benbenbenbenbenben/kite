@@ -138,8 +138,13 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   client.onNotification('kite/publishAssociations', (params: any) => {
-    const bindings: any[] = params.bindings;
-    const violations: any[] = params.violations;
+    const bindings: any[] = params.bindings ?? [];
+    const violations: any[] = params.violations ?? [];
+
+    outputChannel.appendLine(`[kite] received publishAssociations: ${bindings.length} bindings, ${violations.length} violations`);
+    for (const binding of bindings.slice(0, 5)) {
+      outputChannel.appendLine(`[kite]   binding: spec=${binding.kite_spec} target=${binding.target_path} kite_file=${binding.kite_file}`);
+    }
 
     const nextAssociationsByFile = new Map<string, Association[]>();
 
@@ -153,12 +158,12 @@ export function activate(context: vscode.ExtensionContext): void {
       let status: 'pass' | 'fail' | 'warning' = 'pass';
       let message = `Kite Specification: ${binding.kite_spec}`;
 
-      if (bindingViolations.some(v => v.severity === 'error')) {
+      if (bindingViolations.some(v => v.severity === 'error' || v.severity === 'Error')) {
         status = 'fail';
-        message += `\n\nERROR: ${bindingViolations.find(v => v.severity === 'error').message}`;
-      } else if (bindingViolations.some(v => v.severity === 'warning')) {
+        message += `\n\nERROR: ${bindingViolations.find(v => v.severity === 'error' || v.severity === 'Error').message}`;
+      } else if (bindingViolations.some(v => v.severity === 'warning' || v.severity === 'Warning')) {
         status = 'warning';
-        message += `\n\nWARNING: ${bindingViolations.find(v => v.severity === 'warning').message}`;
+        message += `\n\nWARNING: ${bindingViolations.find(v => v.severity === 'warning' || v.severity === 'Warning').message}`;
       }
 
       const assoc: Association = {
@@ -177,6 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
       nextAssociationsByFile.set(fileUri, existing);
     }
 
+    outputChannel.appendLine(`[kite] associations map has ${nextAssociationsByFile.size} unique target files`);
     allAssociationsByFile = nextAssociationsByFile;
     for (const editor of vscode.window.visibleTextEditors) {
       applySourceDecorations(editor);
