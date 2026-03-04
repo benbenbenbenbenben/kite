@@ -73,9 +73,9 @@
 
 The goal: make bound source files "aware" of their kite specifications. Similar to how test runners decorate tested code, but for architectural conformance. All features behind `kite.decorations.*` settings flags, defaulting to on.
 
-- [ ] Gutter/margin indicators on bound source files showing kite association status (pass/fail/warning) — similar to test runner coverage indicators
-- [ ] Explore using a small kite icon (custom `gutterIconPath`) for lines referenced by kite bindings, coloured red/amber/green by validation state
+- [x] Gutter/margin indicators on bound source files showing kite association status (pass/fail/warning) — similar to test runner coverage indicators
+- [x] Explore using a small kite icon (custom `gutterIconPath`) for lines referenced by kite bindings, coloured red/amber/green by validation state
 - [x] Inlay hints on bound source symbols showing the associated kite spec (e.g. `← Order.ship`) — note: the extension already has an inlay hints provider (`sourceInlayHintsProvider`) that could be extended
-- [ ] Decide: gutter icons vs inlay hints vs both — prototype both and see what feels right
-- [ ] Add a "Find Related Kite Specifications" command (reverse lookup: given a source file + symbol, find all `.kite` entries that bind to it)
+- [x] Decide: gutter icons vs inlay hints vs both — prototype both and see what feels right
+- [x] Add a "Find Related Kite Specifications" command (reverse lookup: given a source file + symbol, find all `.kite` entries that bind to it)
 - [ ] Explore CodeLens as an alternative/complement — show "Referenced by: Order.ship (SalesContext)" above bound functions

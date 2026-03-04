@@ -40,6 +40,22 @@
           "description": "Path to the kite executable used to launch the language server."
         }
       }
+    },
+    "commands": [
+      {
+        "command": "kite.findRelatedSpecs",
+        "title": "Kite: Find Related Specifications",
+        "category": "Kite"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "kite.findRelatedSpecs",
+          "group": "navigation",
+          "when": "editorTextFocus && !editorReadonly && resourceExtname != .kite"
+        }
+      ]
     }
   },
   "scripts": {

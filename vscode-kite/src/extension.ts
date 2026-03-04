@@ -9,6 +9,19 @@ import {
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient | undefined;
+
+type Association = {
+  kiteSpec: string;
+  kiteFile: string;
+  kiteSpan: any;
+  targetPath: string;
+  sourceSpan?: any;
+  status: 'pass' | 'fail' | 'warning';
+  message?: string;
+};
+
+let allAssociationsByFile = new Map<string, Association[]>();
+
 type SourceAugmentation = {
   line: number;
   label: string;
@@ -56,8 +69,25 @@ const sourceInlayHintsProvider: vscode.InlayHintsProvider = {
   }
 };
 
+let passDecorType: vscode.TextEditorDecorationType;
+let failDecorType: vscode.TextEditorDecorationType;
+let warnDecorType: vscode.TextEditorDecorationType;
+
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel('Kite Language Server');
+
+  passDecorType = vscode.window.createTextEditorDecorationType({
+    gutterIconPath: context.asAbsolutePath('media/kite-pass.svg'),
+    gutterIconSize: 'contain'
+  });
+  failDecorType = vscode.window.createTextEditorDecorationType({
+    gutterIconPath: context.asAbsolutePath('media/kite-fail.svg'),
+    gutterIconSize: 'contain'
+  });
+  warnDecorType = vscode.window.createTextEditorDecorationType({
+    gutterIconPath: context.asAbsolutePath('media/kite-warning.svg'),
+    gutterIconSize: 'contain'
+  });
 
   const configuredServerPath = vscode.workspace
     .getConfiguration('kite')
@@ -84,7 +114,16 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'kite' }],
+    documentSelector: [
+      { scheme: 'file', language: 'kite' },
+      { scheme: 'file', language: 'rust' },
+      { scheme: 'file', language: 'typescript' },
+      { scheme: 'file', language: 'typescriptreact' },
+      { scheme: 'file', language: 'go' },
+      { scheme: 'file', language: 'python' },
+      { scheme: 'file', language: 'csharp' },
+      { scheme: 'file', language: 'prisma' }
+    ],
     synchronize: {
       fileEvents: [kiteWatcher, sourceWatcher]
     },
@@ -97,6 +136,52 @@ export function activate(context: vscode.ExtensionContext): void {
     serverOptions,
     clientOptions
   );
+
+  client.onNotification('kite/publishAssociations', (params: any) => {
+    const bindings: any[] = params.bindings;
+    const violations: any[] = params.violations;
+
+    const nextAssociationsByFile = new Map<string, Association[]>();
+
+    for (const binding of bindings) {
+      // Find violations for this binding
+      const bindingViolations = violations.filter(v => 
+        v.kite_spec === binding.kite_spec && 
+        v.span?.start_line === binding.kite_span.start_line
+      );
+
+      let status: 'pass' | 'fail' | 'warning' = 'pass';
+      let message = `Kite Specification: ${binding.kite_spec}`;
+
+      if (bindingViolations.some(v => v.severity === 'error')) {
+        status = 'fail';
+        message += `\n\nERROR: ${bindingViolations.find(v => v.severity === 'error').message}`;
+      } else if (bindingViolations.some(v => v.severity === 'warning')) {
+        status = 'warning';
+        message += `\n\nWARNING: ${bindingViolations.find(v => v.severity === 'warning').message}`;
+      }
+
+      const assoc: Association = {
+        kiteSpec: binding.kite_spec,
+        kiteFile: binding.kite_file,
+        kiteSpan: binding.kite_span,
+        targetPath: binding.target_path,
+        sourceSpan: binding.source_span,
+        status,
+        message
+      };
+
+      const fileUri = vscode.Uri.file(binding.target_path).toString();
+      const existing = nextAssociationsByFile.get(fileUri) ?? [];
+      existing.push(assoc);
+      nextAssociationsByFile.set(fileUri, existing);
+    }
+
+    allAssociationsByFile = nextAssociationsByFile;
+    for (const editor of vscode.window.visibleTextEditors) {
+      applySourceDecorations(editor);
+    }
+  });
 
   const inlayHintsRegistration = vscode.languages.registerInlayHintsProvider(
     { scheme: 'file' },
@@ -125,6 +210,54 @@ export function activate(context: vscode.ExtensionContext): void {
   for (const editor of vscode.window.visibleTextEditors) {
     applySourceDecorations(editor);
   }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kite.findRelatedSpecs', async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+
+      const uri = editor.document.uri.toString();
+      const line = editor.selection.active.line;
+
+      const associations = allAssociationsByFile.get(uri) ?? [];
+      const related = associations.filter(
+        (assoc) =>
+          (assoc.sourceSpan?.start_line !== undefined && assoc.sourceSpan.start_line === line + 1) ||
+          (assoc.sourceSpan === undefined && line === 0)
+      );
+
+      if (related.length === 0) {
+        vscode.window.showInformationMessage('No related Kite specifications found for this line.');
+        return;
+      }
+
+      const items = related.map((assoc) => ({
+        label: assoc.kiteSpec,
+        description: path.basename(assoc.kiteFile),
+        assoc
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select a Kite specification to open'
+      });
+
+      if (selected) {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(selected.assoc.kiteFile));
+        const editor = await vscode.window.showTextDocument(doc);
+        const span = selected.assoc.kiteSpan;
+        const range = new vscode.Range(
+          span.start_line - 1,
+          span.start_column - 1,
+          span.end_line - 1,
+          span.end_column - 1
+        );
+        editor.selection = new vscode.Selection(range.start, range.start);
+        editor.revealRange(range);
+      }
+    })
+  );
 
   client.start().then(
     () => outputChannel.appendLine('[kite] Language server started successfully'),
@@ -302,13 +435,12 @@ function collectAugmentationsForKiteUri(uri: vscode.Uri): Map<string, SourceAugm
 }
 
 function applySourceDecorations(editor: vscode.TextEditor): void {
-  const entries = sourceAugmentations.get(editor.document.uri.toString()) ?? [];
-  if (entries.length === 0) {
-    editor.setDecorations(sourceDiagnosticDecorationType, []);
-    return;
-  }
+  const uri = editor.document.uri.toString();
+  const augmentations = sourceAugmentations.get(uri) ?? [];
+  const associations = allAssociationsByFile.get(uri) ?? [];
 
-  const decorations = entries.map((entry) => {
+  // Diagnostic-based (text decorations)
+  const diagDecorations = augmentations.map((entry) => {
     const line = clampLine(
       entry.sourceLine !== undefined ? entry.sourceLine : entry.line,
       editor.document.lineCount
@@ -325,8 +457,38 @@ function applySourceDecorations(editor: vscode.TextEditor): void {
       }
     } satisfies vscode.DecorationOptions;
   });
+  editor.setDecorations(sourceDiagnosticDecorationType, diagDecorations);
 
-  editor.setDecorations(sourceDiagnosticDecorationType, decorations);
+  // Association-based (gutter icons)
+  if (passDecorType && failDecorType && warnDecorType) {
+    const passDecors: vscode.DecorationOptions[] = [];
+    const failDecors: vscode.DecorationOptions[] = [];
+    const warnDecors: vscode.DecorationOptions[] = [];
+
+    for (const assoc of associations) {
+      const line = clampLine(
+        assoc.sourceSpan?.start_line !== undefined ? assoc.sourceSpan.start_line - 1 : 0,
+        editor.document.lineCount
+      );
+      const position = editor.document.lineAt(line).range.start;
+      const decor = {
+        range: new vscode.Range(position, position),
+        hoverMessage: assoc.message
+      };
+
+      if (assoc.status === 'pass') {
+        passDecors.push(decor);
+      } else if (assoc.status === 'fail') {
+        failDecors.push(decor);
+      } else if (assoc.status === 'warning') {
+        warnDecors.push(decor);
+      }
+    }
+
+    editor.setDecorations(passDecorType, passDecors);
+    editor.setDecorations(failDecorType, failDecors);
+    editor.setDecorations(warnDecorType, warnDecors);
+  }
 }
 
 function isKiteUri(uri: vscode.Uri): boolean {

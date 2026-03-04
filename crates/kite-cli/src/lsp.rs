@@ -9,15 +9,18 @@ use tower_lsp::lsp_types::{
     DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentChangeOperation, DocumentChanges, DocumentSymbol, DocumentSymbolParams,
     DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
-    MarkupContent, MarkupKind, MessageType, NumberOrString, OneOf, Position, PrepareRenameResponse,
-    PublishDiagnosticsParams, Range, ResourceOp, SemanticToken as LspSemanticToken,
-    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InlayHint,
+    InlayHintKind, InlayHintLabel, InlayHintParams, Location, MarkupContent, MarkupKind, MessageType,
+    NumberOrString, OneOf, Position, PrepareRenameResponse, PublishDiagnosticsParams, Range,
+    ResourceOp, SemanticToken as LspSemanticToken, SemanticTokenType, SemanticTokens,
+ SemanticTokensFullOptions, SemanticTokensLegend,
     SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{jsonrpc, Client, LanguageServer, LspService, Server};
+
+use tower_lsp::lsp_types::notification::Notification;
 
 pub async fn run_stdio() -> Result<()> {
     let stdin = tokio::io::stdin();
@@ -33,6 +36,14 @@ pub async fn run_stdio() -> Result<()> {
     Ok(())
 }
 
+enum PublishAssociations {}
+
+impl Notification for PublishAssociations {
+    type Params = serde_json::Value;
+    const METHOD: &'static str = "kite/publishAssociations";
+}
+
+
 struct Backend {
     client: Client,
     open_documents: Mutex<HashMap<Url, String>>,
@@ -46,6 +57,12 @@ impl Backend {
         let client = self.client.clone();
         let kite_files = self.find_kite_files();
         let open_docs = self.snapshot_open_documents();
+        let roots = self
+            .workspace_roots
+            .lock()
+            .map(|r| r.clone())
+            .unwrap_or_default();
+
         tokio::spawn(async move {
             // Re-check open documents first
             for (uri, text) in &open_docs {
@@ -68,6 +85,23 @@ impl Backend {
                 let diagnostics = diagnostics_for_source(&source, &uri);
                 publish_diagnostics(&client, uri, diagnostics, None).await;
             }
+
+            // Finally, publish all associations for the entire workspace
+            let mut all_bindings = Vec::new();
+            let mut all_violations = Vec::new();
+            for root in roots {
+                if let Ok(report) = kite_core::check_directory(&root) {
+                    all_bindings.extend(report.bindings);
+                    all_violations.extend(report.violations);
+                }
+            }
+
+            client
+                .send_notification::<PublishAssociations>(serde_json::json!({
+                    "bindings": all_bindings,
+                    "violations": all_violations,
+                }))
+                .await;
         });
     }
 }
@@ -223,6 +257,7 @@ impl LanguageServer for Backend {
                         },
                     ),
                 ),
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -478,6 +513,57 @@ impl LanguageServer for Backend {
         }))
     }
 
+    async fn inlay_hint(
+        &self,
+        params: InlayHintParams,
+    ) -> jsonrpc::Result<Option<Vec<InlayHint>>> {
+        let uri = params.text_document.uri;
+        let Ok(target_path) = uri.to_file_path() else {
+            return Ok(None);
+        };
+
+        if target_path.extension().and_then(|e| e.to_str()) == Some("kite") {
+            return Ok(None);
+        }
+
+        let roots = self
+            .workspace_roots
+            .lock()
+            .map(|r| r.clone())
+            .unwrap_or_default();
+        let mut hints = Vec::new();
+
+        for root in roots {
+            if let Ok(report) = kite_core::check_directory(&root) {
+                for binding in report.bindings {
+                    if binding.target_path == target_path {
+                        let position = if let Some(span) = binding.source_span {
+                            Position::new(
+                                (span.start_line.saturating_sub(1)) as u32,
+                                (span.start_column.saturating_sub(1)) as u32,
+                            )
+                        } else {
+                            Position::new(0, 0)
+                        };
+
+                        hints.push(InlayHint {
+                            position,
+                            label: InlayHintLabel::String(format!("← {}", binding.kite_spec)),
+                            kind: Some(InlayHintKind::TYPE),
+                            text_edits: None,
+                            tooltip: None,
+                            padding_left: Some(true),
+                            padding_right: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        Ok(Some(hints))
+    }
+
     async fn semantic_tokens_full(
         &self,
         params: SemanticTokensParams,
@@ -536,6 +622,10 @@ impl LanguageServer for Backend {
 }
 
 fn diagnostics_for_source(source: &str, uri: &Url) -> Vec<Diagnostic> {
+    if !uri.path().ends_with(".kite") {
+        return Vec::new();
+    }
+
     let base_dir = uri
         .to_file_path()
         .ok()

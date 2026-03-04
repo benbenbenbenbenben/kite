@@ -130,10 +130,21 @@ impl Violation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CheckReport {
     pub contexts: usize,
     pub violations: Vec<Violation>,
+    pub bindings: Vec<BoundSpec>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BoundSpec {
+    pub kite_spec: String,
+    pub target_path: PathBuf,
+    pub symbol: Option<String>,
+    pub kite_file: PathBuf,
+    pub kite_span: ViolationSpan,
+    pub source_span: Option<ViolationSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,10 +170,11 @@ pub fn check_source_in_dir(source: &str, base_dir: &Path) -> Result<CheckReport>
     let grammar_root = resolve_grammar_root(base_dir)?;
     let grammar_registry = GrammarRegistry::load(&grammar_root)?;
     let adapter_runtime = AdapterRuntimeEngine::new(&grammar_registry, base_dir);
-    let violations = validate_program(&ast, base_dir, &grammar_registry, &adapter_runtime)?;
+    let (violations, bindings) = validate_program(&ast, base_dir, &grammar_registry, &adapter_runtime)?;
     Ok(CheckReport {
         contexts: ast.contexts.len(),
         violations,
+        bindings,
     })
 }
 
@@ -226,13 +238,14 @@ pub fn check_directory(dir: &Path) -> Result<CheckReport> {
     let grammar_root = resolve_grammar_root(dir)?;
     let grammar_registry = GrammarRegistry::load(&grammar_root)?;
     let adapter_runtime = AdapterRuntimeEngine::new(&grammar_registry, dir);
-    let mut program_violations =
+    let (mut program_violations, bindings) =
         validate_program(&combined, dir, &grammar_registry, &adapter_runtime)?;
     violations.append(&mut program_violations);
 
     Ok(CheckReport {
         contexts: combined.contexts.len(),
         violations,
+        bindings,
     })
 }
 
@@ -921,8 +934,10 @@ fn validate_program(
     base_dir: &Path,
     grammar_registry: &GrammarRegistry,
     adapter_runtime: &AdapterRuntimeEngine<'_>,
-) -> Result<Vec<Violation>> {
+) -> Result<(Vec<Violation>, Vec<BoundSpec>)> {
     let mut violations = Vec::new();
+    let mut bindings = Vec::new();
+
     for context in &program.contexts {
         validate_context(
             context,
@@ -931,12 +946,116 @@ fn validate_program(
             adapter_runtime,
             &mut violations,
         )?;
+
+        // Collect bindings from this context
+        for element in &context.elements {
+            let ContextElement::Aggregate(aggregate) = element else {
+                continue;
+            };
+            if let Some(binding) = &aggregate.binding {
+                let target = unquote(&binding.target.text);
+                let target_path = resolve_bound_path(base_dir, &target);
+                bindings.push(BoundSpec {
+                    kite_spec: aggregate.name.text.clone(),
+                    target_path,
+                    symbol: None,
+                    kite_file: PathBuf::new(), // Will be filled by caller if known
+                    kite_span: span_from_position(&binding.target.position),
+                    source_span: None,
+                });
+            }
+            for member in &aggregate.members {
+                match member {
+                    AggregateMember::Command(command) => {
+                        if let RuleBody::Binding(binding) = &command.body {
+                            let target = unquote(&binding.target.text);
+                            let target_path = resolve_bound_path(base_dir, &target);
+                            let symbol = binding.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                            let source_span = if target_path.exists() {
+                                if let Some(language) = adapter_runtime.language_for_path(&target_path) {
+                                    if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
+                                        if let Ok(source) = std::fs::read_to_string(&target_path) {
+                                            if let Some(s) = &symbol {
+                                                adapter_runtime
+                                                    .find_symbol_span(&language, &target_path, &source, s, &query)
+                                                    .ok()
+                                                    .flatten()
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            bindings.push(BoundSpec {
+                                kite_spec: format!("{}.{}", aggregate.name.text, command.name.text),
+                                target_path,
+                                symbol,
+                                kite_file: PathBuf::new(),
+                                kite_span: span_from_position(&binding.target.position),
+                                source_span,
+                            });
+                        }
+                    }
+                    AggregateMember::Invariant(invariant) => {
+                        if let RuleBody::Binding(binding) = &invariant.body {
+                            let target = unquote(&binding.target.text);
+                            let target_path = resolve_bound_path(base_dir, &target);
+                            let symbol = binding.symbol.as_ref().map(|s| unquote(&s.symbol.text));
+                            let source_span = if target_path.exists() {
+                                if let Some(language) = adapter_runtime.language_for_path(&target_path) {
+                                    if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
+                                        if let Ok(source) = std::fs::read_to_string(&target_path) {
+                                            if let Some(s) = &symbol {
+                                                adapter_runtime
+                                                    .find_symbol_span(&language, &target_path, &source, s, &query)
+                                                    .ok()
+                                                    .flatten()
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            bindings.push(BoundSpec {
+                                kite_spec: format!("{}.{}", aggregate.name.text, invariant.name.text),
+                                target_path,
+                                symbol,
+                                kite_file: PathBuf::new(),
+                                kite_span: span_from_position(&binding.target.position),
+                                source_span,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 
     // Cross-context: shared kernel detection
     detect_shared_bindings(program, base_dir, &mut violations);
 
-    Ok(violations)
+    Ok((violations, bindings))
 }
 
 fn bindings_in_program(program: &kite_parser::Program) -> Vec<&Binding> {

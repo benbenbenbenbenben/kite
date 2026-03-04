@@ -23,6 +23,7 @@ toml = "0.8.20"
 tree-sitter = { git = "https://github.com/jaboatman/tree-sitter", branch = "combined", features = ["wasm"] }
 tempfile = "3.17.1"
 rust-sitter = { git = "https://github.com/benbenbenbenbenben/krust-sitter" }
+walkdir = "2.5.0"
 
 kite-core = { path = "crates/kite-core" }
 kite-parser = { path = "crates/kite-parser" }
