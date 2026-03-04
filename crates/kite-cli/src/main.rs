@@ -48,7 +48,7 @@ fn main() -> Result<()> {
             let report = kite_core::check_file(&file)?;
             if report.violations.is_empty() {
                 println!(
-                    "✨ All contexts crystallized. {} context(s) parsed.",
+                    "🪁 All contexts verified. {} context(s) parsed.",
                     report.contexts
                 );
             } else {
@@ -71,7 +71,7 @@ fn main() -> Result<()> {
             let formatted = kite_core::format_source(&source)?;
             if write {
                 std::fs::write(&file, &formatted)?;
-                println!("✨ Formatted {}", file.display());
+                println!("🪁 Formatted {}", file.display());
             } else {
                 print!("{}", formatted);
             }
@@ -84,7 +84,7 @@ fn main() -> Result<()> {
             }
             std::fs::write(&output, &scaffold)?;
             println!(
-                "✨ Scaffolded {} from {}",
+                "🪁 Scaffolded {} from {}",
                 output.display(),
                 source.display()
             );

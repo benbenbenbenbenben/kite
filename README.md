@@ -2,9 +2,7 @@ Here is the `README.md` for the repository. It pitches the philosophy, explains 
 
 ---
 
-# 💎 Kite
-
-> **kite** *(Finnish)*: Crystal. The crystallized, immutable truth of a system.
+# 🪁 Kite
 
 **Kite is a continuous architecture enforcement tool for Domain-Driven Design (DDD).** It provides a Domain-Specific Language (`.kite`) to define your Bounded Contexts, Aggregates, and Sagas. But unlike traditional Model-Driven tools, **Kite does not generate code.** Instead, it uses [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) (via [this `rust-sitter` fork](https://github.com/benbenbenbenbenben/krust-sitter)) to parse your actual implementation files (currently Rust and TypeScript/TSX) and validates that your codebase structurally matches your architectural design.
 
@@ -87,7 +85,7 @@ $ kite check
 ✅ Command 'ship()' signature matches implementation.
 ✅ Invariant 'MustHaveItems' verified.
 
-✨ All contexts crystallized. 0 Drift detected.
+🪁 All contexts verified. 0 Drift detected.
 
 ```
 
@@ -142,7 +140,7 @@ Kite is part of the **K-Stack**, a suite of tools designed for high-assurance, e
 * **Kodus**: The secure server runtime (Home).
 * **Kettu**: The agile, WASM-native implementation language (Fox).
 * **Karu**: The strict security and authorization policy language (Bear).
-* **Kite**: The structural domain and architecture verifier (Crystal).
+* **Kite**: The structural domain and architecture verifier (Sky).
 
 *(Note: Kite works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)*
 
