@@ -27,6 +27,23 @@ jobs:
       - name: Build kite-cli
         run: cargo build --release --target ${{ matrix.target }} -p kite-cli
 
+  vscode-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build kite-cli (dependency for tests)
+        run: cargo build -p kite-cli
+      - name: Install VS Code dependencies
+        working-directory: vscode-kite
+        run: npm ci
+      - name: Run VS Code Integration Tests
+        working-directory: vscode-kite
+        run: xvfb-run -a npm test
+
   wasm:
     runs-on: ubuntu-latest
     steps:

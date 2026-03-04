@@ -45,7 +45,7 @@
 - [x] Regression tests: `expected-pass` / `expected-fail` fixture files in `examples/shipping-co/domain/regressions/` assert specific violation codes (`COMMAND_BINDING_ARITY_MISMATCH`, `CONTEXT_BOUNDARY_FORBIDDEN`, `BINDING_SYMBOL_NOT_FOUND`)
 - [x] VS Code integration tests: extension activation + document symbol pipeline tested in real Extension Development Host via `@vscode/test-cli` — run with `cd vscode-kite && npm test`
 - [ ] Add more regression fixtures as new violation types are added
-- [ ] CI: run VS Code integration tests (needs `xvfb-run` or headless Electron)
+- [x] CI: run VS Code integration tests (needs `xvfb-run` or headless Electron)
 
 ## Tooling & CI
 
