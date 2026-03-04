@@ -54,6 +54,6 @@ context PackagingWorkflowContext {
   aggregate PackagingWorkflow bound to "../scripts/build-native.sh" {
     command buildNativeTargets() bound to "../scripts/build-native.sh"
     command buildWasiArtifacts() bound to "../scripts/build-wasm.sh"
-    command compileExtensionAssets() bound to "../vscode-kide/package.json"
+    command compileExtensionAssets() bound to "../vscode-kide/package.json" symbol "name"
   }
 }

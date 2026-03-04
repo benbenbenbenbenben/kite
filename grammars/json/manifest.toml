@@ -1,0 +1,8 @@
+language = "json"
+version = "0.24.8"
+wasm_file = "tree-sitter-json.wasm"
+extensions = [".json"]
+display_name = "JSON"
+
+[queries]
+symbol_exists = "queries/symbol_exists.scm"
