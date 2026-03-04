@@ -55,7 +55,6 @@ impl Backend {
     /// This avoids blocking the tower-lsp request pipeline.
     fn spawn_workspace_diagnostics(&self) {
         let client = self.client.clone();
-        let kite_files = self.find_kite_files();
         let open_docs = self.snapshot_open_documents();
         let roots = self
             .workspace_roots
@@ -68,11 +67,7 @@ impl Backend {
             client
                 .log_message(
                     MessageType::INFO,
-                    format!(
-                        "[kite] spawn_workspace_diagnostics: {} roots, {} kite files found",
-                        roots.len(),
-                        kite_files.len()
-                    ),
+                    format!("[kite] spawn_workspace_diagnostics: {} roots", roots.len(),),
                 )
                 .await;
             for root in &roots {
@@ -84,40 +79,50 @@ impl Backend {
                     .await;
             }
 
-            // Re-check open documents first
+            // Re-check open documents
+            client
+                .log_message(
+                    MessageType::INFO,
+                    "[kite] checking open documents".to_string(),
+                )
+                .await;
             for (uri, text) in &open_docs {
                 let diagnostics = diagnostics_for_source(text, uri);
                 publish_diagnostics(&client, uri.clone(), diagnostics, None).await;
             }
-            // Then check workspace .kite files not currently open
-            let open_uris: std::collections::HashSet<Url> =
-                open_docs.into_iter().map(|(uri, _)| uri).collect();
-            for path in kite_files {
-                let Ok(uri) = Url::from_file_path(&path) else {
-                    continue;
-                };
-                if open_uris.contains(&uri) {
-                    continue;
-                }
-                let Ok(source) = std::fs::read_to_string(&path) else {
-                    continue;
-                };
-                let diagnostics = diagnostics_for_source(&source, &uri);
-                publish_diagnostics(&client, uri, diagnostics, None).await;
-            }
+            client
+                .log_message(
+                    MessageType::INFO,
+                    "[kite] open documents check complete".to_string(),
+                )
+                .await;
 
-            // Finally, publish all associations for the entire workspace
+            // Publish associations for the entire workspace
+            client
+                .log_message(
+                    MessageType::INFO,
+                    "[kite] checking workspace for associations".to_string(),
+                )
+                .await;
             let mut all_bindings = Vec::new();
             let mut all_violations = Vec::new();
             for root in &roots {
-                match kite_core::check_workspace(root) {
-                    Ok(report) => {
+                client
+                    .log_message(
+                        MessageType::INFO,
+                        format!("[kite]   check_workspace({})...", root.display()),
+                    )
+                    .await;
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    kite_core::check_workspace(root)
+                }));
+                match result {
+                    Ok(Ok(report)) => {
                         client
                             .log_message(
                                 MessageType::INFO,
                                 format!(
-                                    "[kite] check_workspace({}) => {} bindings, {} violations",
-                                    root.display(),
+                                    "[kite]   => {} bindings, {} violations",
                                     report.bindings.len(),
                                     report.violations.len()
                                 ),
@@ -126,26 +131,40 @@ impl Backend {
                         all_bindings.extend(report.bindings);
                         all_violations.extend(report.violations);
                     }
-                    Err(err) => {
+                    Ok(Err(err)) => {
                         client
                             .log_message(
                                 MessageType::WARNING,
-                                format!(
-                                    "[kite] check_workspace({}) failed: {}",
-                                    root.display(),
-                                    err
-                                ),
+                                format!("[kite]   => error: {:#}", err),
                             )
+                            .await;
+                    }
+                    Err(panic_info) => {
+                        let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
+                            s.clone()
+                        } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else {
+                            "unknown panic".to_string()
+                        };
+                        client
+                            .log_message(MessageType::ERROR, format!("[kite]   => PANIC: {}", msg))
                             .await;
                     }
                 }
             }
+            client
+                .log_message(
+                    MessageType::INFO,
+                    "[kite] workspace check complete".to_string(),
+                )
+                .await;
 
             client
                 .log_message(
                     MessageType::INFO,
                     format!(
-                        "[kite] publishing associations: {} bindings, {} violations",
+                        "[kite] publishing: {} bindings, {} violations",
                         all_bindings.len(),
                         all_violations.len()
                     ),
@@ -204,38 +223,6 @@ impl Backend {
         }
         let path = uri.to_file_path().ok()?;
         std::fs::read_to_string(path).ok()
-    }
-
-    fn find_kite_files(&self) -> Vec<std::path::PathBuf> {
-        let empty = Vec::new();
-        let roots = self.workspace_roots.lock().ok();
-        let roots = roots.as_deref().unwrap_or(&empty);
-        let mut kite_files = Vec::new();
-        for root in roots {
-            Self::walk_for_kite_files(root, &mut kite_files, 0);
-        }
-        kite_files
-    }
-
-    fn walk_for_kite_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>, depth: usize) {
-        if depth > 10 {
-            return;
-        }
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') || name == "node_modules" || name == "target" {
-                    continue;
-                }
-                Self::walk_for_kite_files(&path, out, depth + 1);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("kite") {
-                out.push(path);
-            }
-        }
     }
 
     async fn publish(&self, uri: Url, diagnostics: Vec<Diagnostic>, version: Option<i32>) {
