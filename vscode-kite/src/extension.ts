@@ -21,6 +21,51 @@ type Association = {
 };
 
 let allAssociationsByFile = new Map<string, Association[]>();
+let cachedRawBindings: any[] = [];
+
+function buildAssociationsFromBindings(bindings: any[]): Map<string, Association[]> {
+  const result = new Map<string, Association[]>();
+  for (const binding of bindings) {
+    let status: 'pass' | 'fail' | 'warning' = 'pass';
+    let message = `Kite Specification: ${binding.kite_spec}`;
+
+    if (binding.kite_file) {
+      const kiteUri = vscode.Uri.file(binding.kite_file);
+      const diagnostics = vscode.languages.getDiagnostics(kiteUri);
+      const kiteSpanLine = (binding.kite_span?.start_line ?? 1) - 1;
+
+      for (const diag of diagnostics) {
+        if (diag.source !== 'kite') { continue; }
+        if (diag.range.start.line <= kiteSpanLine && diag.range.end.line >= kiteSpanLine) {
+          if (diag.severity === vscode.DiagnosticSeverity.Error) {
+            status = 'fail';
+            message += `\n\n❌ ${diag.message}`;
+            break;
+          } else if (diag.severity === vscode.DiagnosticSeverity.Warning) {
+            status = 'warning';
+            message += `\n\n⚠️ ${diag.message}`;
+          }
+        }
+      }
+    }
+
+    const assoc: Association = {
+      kiteSpec: binding.kite_spec,
+      kiteFile: binding.kite_file,
+      kiteSpan: binding.kite_span,
+      targetPath: binding.target_path,
+      sourceSpan: binding.source_span,
+      status,
+      message
+    };
+
+    const fileUri = vscode.Uri.file(binding.target_path).toString();
+    const existing = result.get(fileUri) ?? [];
+    existing.push(assoc);
+    result.set(fileUri, existing);
+  }
+  return result;
+}
 
 type SourceAugmentation = {
   line: number;
@@ -146,48 +191,22 @@ export function activate(context: vscode.ExtensionContext): void {
       outputChannel.appendLine(`[kite]   binding: spec=${binding.kite_spec} target=${binding.target_path} kite_file=${binding.kite_file}`);
     }
 
-    const nextAssociationsByFile = new Map<string, Association[]>();
+    cachedRawBindings = bindings;
+    allAssociationsByFile = buildAssociationsFromBindings(bindings);
 
-    for (const binding of bindings) {
-      // Find violations for this binding
-      const bindingViolations = violations.filter(v => 
-        v.kite_spec === binding.kite_spec && 
-        v.span?.start_line === binding.kite_span.start_line
-      );
-
-      let status: 'pass' | 'fail' | 'warning' = 'pass';
-      let message = `Kite Specification: ${binding.kite_spec}`;
-
-      if (bindingViolations.some(v => v.severity === 'error' || v.severity === 'Error')) {
-        status = 'fail';
-        message += `\n\nERROR: ${bindingViolations.find(v => v.severity === 'error' || v.severity === 'Error').message}`;
-      } else if (bindingViolations.some(v => v.severity === 'warning' || v.severity === 'Warning')) {
-        status = 'warning';
-        message += `\n\nWARNING: ${bindingViolations.find(v => v.severity === 'warning' || v.severity === 'Warning').message}`;
-      }
-
-      const assoc: Association = {
-        kiteSpec: binding.kite_spec,
-        kiteFile: binding.kite_file,
-        kiteSpan: binding.kite_span,
-        targetPath: binding.target_path,
-        sourceSpan: binding.source_span,
-        status,
-        message
-      };
-
-      const fileUri = vscode.Uri.file(binding.target_path).toString();
-      const existing = nextAssociationsByFile.get(fileUri) ?? [];
-      existing.push(assoc);
-      nextAssociationsByFile.set(fileUri, existing);
-    }
-
-    outputChannel.appendLine(`[kite] associations map has ${nextAssociationsByFile.size} unique target files`);
-    allAssociationsByFile = nextAssociationsByFile;
+    outputChannel.appendLine(`[kite] associations map has ${allAssociationsByFile.size} unique target files`);
     for (const editor of vscode.window.visibleTextEditors) {
       applySourceDecorations(editor);
     }
   });
+
+  function refreshBindingStatuses(): void {
+    if (cachedRawBindings.length === 0) { return; }
+    allAssociationsByFile = buildAssociationsFromBindings(cachedRawBindings);
+    for (const editor of vscode.window.visibleTextEditors) {
+      applySourceDecorations(editor);
+    }
+  }
 
   const inlayHintsRegistration = vscode.languages.registerInlayHintsProvider(
     { scheme: 'file' },
@@ -196,6 +215,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const diagnosticsListener = vscode.languages.onDidChangeDiagnostics((event) => {
     updateSourceAugmentationsForKiteUris(event.uris);
+
+    // If any .kite file diagnostics changed, re-evaluate binding statuses
+    const kiteChanged = event.uris.some(uri => uri.fsPath.endsWith('.kite'));
+    if (kiteChanged && allAssociationsByFile.size > 0) {
+      refreshBindingStatuses();
+    }
   });
 
   const closeListener = vscode.workspace.onDidCloseTextDocument((document) => {
