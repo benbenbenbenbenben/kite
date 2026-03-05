@@ -87,25 +87,11 @@ const sourceDiagnosticDecorationType = vscode.window.createTextEditorDecorationT
 });
 
 
-let passDecorType: vscode.TextEditorDecorationType;
-let failDecorType: vscode.TextEditorDecorationType;
-let warnDecorType: vscode.TextEditorDecorationType;
-
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel('Kite Language Server');
 
-  passDecorType = vscode.window.createTextEditorDecorationType({
-    gutterIconPath: context.asAbsolutePath('media/kite-pass.svg'),
-    gutterIconSize: 'contain'
-  });
-  failDecorType = vscode.window.createTextEditorDecorationType({
-    gutterIconPath: context.asAbsolutePath('media/kite-fail.svg'),
-    gutterIconSize: 'contain'
-  });
-  warnDecorType = vscode.window.createTextEditorDecorationType({
-    gutterIconPath: context.asAbsolutePath('media/kite-warning.svg'),
-    gutterIconSize: 'contain'
-  });
+  const sourceDiagnostics = vscode.languages.createDiagnosticCollection('kite-source');
+  context.subscriptions.push(sourceDiagnostics);
 
   const configuredServerPath = vscode.workspace
     .getConfiguration('kite')
@@ -168,6 +154,7 @@ export function activate(context: vscode.ExtensionContext): void {
     allAssociationsByFile = buildAssociationsFromBindings(bindings);
 
     outputChannel.appendLine(`[kite] associations map has ${allAssociationsByFile.size} unique target files`);
+    publishSourceDiagnostics(sourceDiagnostics);
     for (const editor of vscode.window.visibleTextEditors) {
       applySourceDecorations(editor);
     }
@@ -176,6 +163,7 @@ export function activate(context: vscode.ExtensionContext): void {
   function refreshBindingStatuses(): void {
     if (cachedRawBindings.length === 0) { return; }
     allAssociationsByFile = buildAssociationsFromBindings(cachedRawBindings);
+    publishSourceDiagnostics(sourceDiagnostics);
     for (const editor of vscode.window.visibleTextEditors) {
       applySourceDecorations(editor);
     }
@@ -474,45 +462,70 @@ function applySourceDecorations(editor: vscode.TextEditor): void {
     } satisfies vscode.DecorationOptions;
   });
   editor.setDecorations(sourceDiagnosticDecorationType, diagDecorations);
-
-  // Association-based (gutter icons)
-  if (passDecorType && failDecorType && warnDecorType) {
-    const passDecors: vscode.DecorationOptions[] = [];
-    const failDecors: vscode.DecorationOptions[] = [];
-    const warnDecors: vscode.DecorationOptions[] = [];
-
-    for (const assoc of associations) {
-      // Skip aggregate-level bindings with no resolved source span
-      if (!assoc.sourceSpan?.start_line) {
-        continue;
-      }
-      const line = clampLine(
-        assoc.sourceSpan.start_line - 1,
-        editor.document.lineCount
-      );
-      const position = editor.document.lineAt(line).range.start;
-      const decor = {
-        range: new vscode.Range(position, position),
-        hoverMessage: assoc.message
-      };
-
-      if (assoc.status === 'pass') {
-        passDecors.push(decor);
-      } else if (assoc.status === 'fail') {
-        failDecors.push(decor);
-      } else if (assoc.status === 'warning') {
-        warnDecors.push(decor);
-      }
-    }
-
-    editor.setDecorations(passDecorType, passDecors);
-    editor.setDecorations(failDecorType, failDecors);
-    editor.setDecorations(warnDecorType, warnDecors);
-  }
 }
 
 function isKiteUri(uri: vscode.Uri): boolean {
   return uri.scheme === 'file' && uri.fsPath.toLowerCase().endsWith('.kite');
+}
+
+/**
+ * Publish real VS Code diagnostics on source files at bound symbol spans.
+ * Only publishes for bindings that have errors or warnings (from .kite file diagnostics).
+ */
+function publishSourceDiagnostics(collection: vscode.DiagnosticCollection): void {
+  collection.clear();
+
+  const diagsByUri = new Map<string, vscode.Diagnostic[]>();
+
+  for (const [fileUri, associations] of allAssociationsByFile) {
+    for (const assoc of associations) {
+      if (assoc.status === 'pass') { continue; }
+      if (!assoc.sourceSpan?.start_line) { continue; }
+
+      const range = new vscode.Range(
+        assoc.sourceSpan.start_line - 1,
+        Math.max(0, (assoc.sourceSpan.start_column ?? 1) - 1),
+        assoc.sourceSpan.end_line - 1,
+        Math.max(0, (assoc.sourceSpan.end_column ?? 1) - 1)
+      );
+
+      const severity = assoc.status === 'fail'
+        ? vscode.DiagnosticSeverity.Error
+        : vscode.DiagnosticSeverity.Warning;
+
+      // Extract the actual issue message (after the spec name line)
+      const lines = (assoc.message ?? '').split('\n').filter(l => l.trim().length > 0);
+      const issueMessage = lines.length > 1
+        ? lines.slice(1).map(l => l.replace(/^[❌⚠️]\s*/, '')).join('; ')
+        : `kite: ${assoc.kiteSpec}`;
+
+      const diag = new vscode.Diagnostic(range, issueMessage, severity);
+      diag.source = 'kite';
+
+      // Link back to the .kite file
+      if (assoc.kiteFile && assoc.kiteSpan?.start_line) {
+        const kiteUri = vscode.Uri.file(assoc.kiteFile);
+        const kiteRange = new vscode.Range(
+          assoc.kiteSpan.start_line - 1, 0,
+          assoc.kiteSpan.start_line - 1, 0
+        );
+        diag.relatedInformation = [
+          new vscode.DiagnosticRelatedInformation(
+            new vscode.Location(kiteUri, kiteRange),
+            `defined in ${path.basename(assoc.kiteFile)}: ${assoc.kiteSpec}`
+          )
+        ];
+      }
+
+      const existing = diagsByUri.get(fileUri) ?? [];
+      existing.push(diag);
+      diagsByUri.set(fileUri, existing);
+    }
+  }
+
+  for (const [fileUri, diags] of diagsByUri) {
+    collection.set(vscode.Uri.parse(fileUri), diags);
+  }
 }
 
 function boundFilePathFromDiagnostic(diagnostic: vscode.Diagnostic): string | undefined {
