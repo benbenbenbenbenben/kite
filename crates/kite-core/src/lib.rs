@@ -2404,11 +2404,13 @@ fn type_ref_name(ty: &TypeRef) -> &'static str {
 
 fn resolve_bound_path(base_dir: &Path, target: &str) -> PathBuf {
     let target_path = Path::new(target);
-    if target_path.is_absolute() {
+    let joined = if target_path.is_absolute() {
         target_path.to_path_buf()
     } else {
         base_dir.join(target_path)
-    }
+    };
+    // Canonicalize to resolve ../  segments; fall back to joined if file doesn't exist
+    joined.canonicalize().unwrap_or(joined)
 }
 
 fn display_relative<'a>(path: &'a Path, base_dir: &Path) -> std::borrow::Cow<'a, str> {
