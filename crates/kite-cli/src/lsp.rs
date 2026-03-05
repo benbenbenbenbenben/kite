@@ -542,6 +542,9 @@ impl LanguageServer for Backend {
             return Ok(None);
         }
 
+        // Canonicalize to match the canonical paths in cached bindings
+        let target_path = target_path.canonicalize().unwrap_or(target_path);
+
         let bindings = self
             .cached_bindings
             .lock()
