@@ -480,14 +480,15 @@ function publishSourceDiagnostics(collection: vscode.DiagnosticCollection): void
   for (const [fileUri, associations] of allAssociationsByFile) {
     for (const assoc of associations) {
       if (assoc.status === 'pass') { continue; }
-      if (!assoc.sourceSpan?.start_line) { continue; }
 
-      const range = new vscode.Range(
-        assoc.sourceSpan.start_line - 1,
-        Math.max(0, (assoc.sourceSpan.start_column ?? 1) - 1),
-        assoc.sourceSpan.end_line - 1,
-        Math.max(0, (assoc.sourceSpan.end_column ?? 1) - 1)
-      );
+      const range = assoc.sourceSpan?.start_line
+        ? new vscode.Range(
+            assoc.sourceSpan.start_line - 1,
+            Math.max(0, (assoc.sourceSpan.start_column ?? 1) - 1),
+            assoc.sourceSpan.end_line - 1,
+            Math.max(0, (assoc.sourceSpan.end_column ?? 1) - 1)
+          )
+        : new vscode.Range(0, 0, 0, 0);
 
       const severity = assoc.status === 'fail'
         ? vscode.DiagnosticSeverity.Error

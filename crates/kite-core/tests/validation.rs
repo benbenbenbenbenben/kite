@@ -1741,3 +1741,197 @@ fn check_workspace_shipping_co_produces_bindings() {
         );
     }
 }
+
+#[test]
+fn collect_workspace_bindings_returns_aggregate_and_member_bindings() {
+    let temp_dir = TempDir::new().unwrap();
+    create_rust_grammar(temp_dir.path());
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        r#"
+pub fn ship() {}
+pub fn verify() {}
+"#,
+    );
+    create_file(
+        &temp_dir.path().join("main.kite"),
+        r#"
+context SalesContext {
+  aggregate Order bound to "src/order.rs" {
+    command ship() bound to "src/order.rs" symbol "ship"
+    invariant Valid bound to "src/order.rs" symbol "verify"
+  }
+}
+"#,
+    );
+
+    let bindings = kite_core::collect_workspace_bindings(temp_dir.path()).unwrap();
+
+    // Should have 3: aggregate (no symbol), command, invariant
+    assert_eq!(bindings.len(), 3);
+
+    let agg = bindings.iter().find(|b| b.kite_spec == "Order").unwrap();
+    assert_eq!(agg.symbol, None, "aggregate binding should have no symbol");
+    assert!(
+        agg.source_span.is_none(),
+        "aggregate without symbol should have no source_span"
+    );
+
+    let cmd = bindings
+        .iter()
+        .find(|b| b.kite_spec == "Order.ship")
+        .unwrap();
+    assert_eq!(cmd.symbol.as_deref(), Some("ship"));
+    // source_span should be resolved via batched symbol lookup
+    assert!(
+        cmd.source_span.is_some(),
+        "command binding should have resolved source_span"
+    );
+    assert_eq!(cmd.source_span.unwrap().start_line, 2);
+
+    let inv = bindings
+        .iter()
+        .find(|b| b.kite_spec == "Order.Valid")
+        .unwrap();
+    assert_eq!(inv.symbol.as_deref(), Some("verify"));
+    assert!(
+        inv.source_span.is_some(),
+        "invariant binding should have resolved source_span"
+    );
+}
+
+#[test]
+fn collect_workspace_bindings_shipping_co_resolves_source_spans() {
+    let example_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/shipping-co");
+    if !example_path.join("domain/main.kite").exists() {
+        eprintln!("skipping: shipping-co example not found");
+        return;
+    }
+
+    let bindings = kite_core::collect_workspace_bindings(&example_path).unwrap();
+    assert!(!bindings.is_empty(), "should find bindings");
+
+    // Bindings with symbol clauses should have source_span resolved
+    let with_symbol: Vec<_> = bindings.iter().filter(|b| b.symbol.is_some()).collect();
+    let with_span: Vec<_> = with_symbol
+        .iter()
+        .filter(|b| b.source_span.is_some())
+        .collect();
+
+    assert!(!with_symbol.is_empty(), "should have bindings with symbols");
+    // At least some should have resolved spans
+    assert!(
+        !with_span.is_empty(),
+        "some bindings with symbols should have resolved source_span, found {}/{} resolved",
+        with_span.len(),
+        with_symbol.len()
+    );
+}
+
+#[test]
+fn regression_missing_symbol_produces_error() {
+    let kite_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/shipping-co/domain/regressions/expected-fail-missing-symbol.kite");
+    if !kite_path.exists() {
+        eprintln!("skipping: regression fixture not found");
+        return;
+    }
+
+    let report = check_file(&kite_path).unwrap();
+
+    let has_missing_symbol = report
+        .violations
+        .iter()
+        .any(|v| v.code == CODE_BINDING_SYMBOL_NOT_FOUND && v.severity == ViolationSeverity::Error);
+
+    assert!(
+        has_missing_symbol,
+        "expected-fail-missing-symbol should produce BINDING_SYMBOL_NOT_FOUND error, got: {:?}",
+        report
+            .violations
+            .iter()
+            .map(|v| format!("[{}] {}", v.code, v.message))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn regression_arity_mismatch_produces_error() {
+    let kite_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/shipping-co/domain/regressions/expected-fail-arity-mismatch.kite");
+    if !kite_path.exists() {
+        eprintln!("skipping: regression fixture not found");
+        return;
+    }
+
+    let report = check_file(&kite_path).unwrap();
+
+    let has_arity_mismatch = report.violations.iter().any(|v| {
+        v.code == CODE_COMMAND_BINDING_ARITY_MISMATCH && v.severity == ViolationSeverity::Error
+    });
+
+    assert!(
+        has_arity_mismatch,
+        "expected-fail-arity-mismatch should produce COMMAND_BINDING_ARITY_MISMATCH error, got: {:?}",
+        report
+            .violations
+            .iter()
+            .map(|v| format!("[{}] {}", v.code, v.message))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn regression_boundary_violation_produces_error() {
+    let kite_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../../examples/shipping-co/domain/regressions/expected-fail-boundary-violation.kite",
+    );
+    if !kite_path.exists() {
+        eprintln!("skipping: regression fixture not found");
+        return;
+    }
+
+    let report = check_file(&kite_path).unwrap();
+
+    let has_boundary_error = report.violations.iter().any(|v| {
+        v.code == kite_core::CODE_CONTEXT_BOUNDARY_FORBIDDEN
+            && v.severity == ViolationSeverity::Error
+    });
+
+    assert!(
+        has_boundary_error,
+        "expected-fail-boundary-violation should produce CONTEXT_BOUNDARY_FORBIDDEN error, got: {:?}",
+        report
+            .violations
+            .iter()
+            .map(|v| format!("[{}] {}", v.code, v.message))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn regression_minimal_pass_produces_no_errors() {
+    let kite_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/shipping-co/domain/regressions/expected-pass-minimal.kite");
+    if !kite_path.exists() {
+        eprintln!("skipping: regression fixture not found");
+        return;
+    }
+
+    let report = check_file(&kite_path).unwrap();
+
+    let errors: Vec<_> = report
+        .violations
+        .iter()
+        .filter(|v| v.severity == ViolationSeverity::Error)
+        .collect();
+
+    assert!(
+        errors.is_empty(),
+        "expected-pass-minimal should produce no errors, got: {:?}",
+        errors
+            .iter()
+            .map(|v| format!("[{}] {}", v.code, v.message))
+            .collect::<Vec<_>>()
+    );
+}

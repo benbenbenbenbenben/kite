@@ -143,7 +143,7 @@ impl Backend {
                 )
                 .await;
 
-            // Cache bindings for inlay_hint requests
+            // Cache bindings for code_lens requests
             if let Ok(mut cache) = cached_bindings.lock() {
                 *cache = all_bindings.clone();
             }
@@ -154,6 +154,56 @@ impl Backend {
                     "violations": [],
                 }))
                 .await;
+
+            // Phase 3: validate ALL .kite files from the workspace to publish
+            // diagnostics, even for files that aren't open. This enables the
+            // extension to cross-reference errors for source file diagnostics.
+            let open_uris: std::collections::HashSet<String> =
+                open_docs.iter().map(|(uri, _)| uri.to_string()).collect();
+            let mut kite_files: std::collections::BTreeSet<std::path::PathBuf> =
+                std::collections::BTreeSet::new();
+            for binding in &all_bindings {
+                kite_files.insert(binding.kite_file.clone());
+            }
+            let unopened_kite: Vec<_> = kite_files
+                .into_iter()
+                .filter(|f| {
+                    let uri_str = Url::from_file_path(f)
+                        .map(|u| u.to_string())
+                        .unwrap_or_default();
+                    !open_uris.contains(&uri_str)
+                })
+                .collect();
+
+            if !unopened_kite.is_empty() {
+                client
+                    .log_message(
+                        MessageType::INFO,
+                        format!(
+                            "[kite] validating {} unopened .kite files",
+                            unopened_kite.len()
+                        ),
+                    )
+                    .await;
+
+                for kite_file in &unopened_kite {
+                    let Ok(source) = std::fs::read_to_string(kite_file) else {
+                        continue;
+                    };
+                    let Ok(uri) = Url::from_file_path(kite_file) else {
+                        continue;
+                    };
+                    let diagnostics = diagnostics_for_source(&source, &uri);
+                    publish_diagnostics(&client, uri, diagnostics, None).await;
+                }
+
+                client
+                    .log_message(
+                        MessageType::INFO,
+                        "[kite] background validation complete".to_string(),
+                    )
+                    .await;
+            }
         });
     }
 }
@@ -600,10 +650,10 @@ impl LanguageServer for Backend {
                 if binding.target_path != file_path {
                     continue;
                 }
-                let Some(span) = binding.source_span else {
-                    continue;
-                };
-                let line = (span.start_line.saturating_sub(1)) as u32;
+                let line = binding
+                    .source_span
+                    .map(|s| (s.start_line.saturating_sub(1)) as u32)
+                    .unwrap_or(0);
                 let range = Range::new(Position::new(line, 0), Position::new(line, 0));
 
                 let kite_file_display = binding
