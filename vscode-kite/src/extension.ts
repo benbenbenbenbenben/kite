@@ -472,8 +472,12 @@ function applySourceDecorations(editor: vscode.TextEditor): void {
     const warnDecors: vscode.DecorationOptions[] = [];
 
     for (const assoc of associations) {
+      // Skip aggregate-level bindings with no resolved source span
+      if (!assoc.sourceSpan?.start_line) {
+        continue;
+      }
       const line = clampLine(
-        assoc.sourceSpan?.start_line !== undefined ? assoc.sourceSpan.start_line - 1 : 0,
+        assoc.sourceSpan.start_line - 1,
         editor.document.lineCount
       );
       const position = editor.document.lineAt(line).range.start;
