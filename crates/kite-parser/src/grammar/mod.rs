@@ -23,6 +23,7 @@ pub struct Context {
 pub enum ContextElement {
     Dictionary(Dictionary),
     Boundary(Boundary),
+    Intent(Intent),
     Aggregate(Aggregate),
 }
 
@@ -210,5 +211,34 @@ pub struct Identifier {
 #[derive(Debug, Rule)]
 pub struct StringLiteral {
     #[leaf(re(r#""([^"\\]|\\.)*""#))]
+    pub text: String,
+}
+
+#[derive(Debug, Rule)]
+pub struct Intent {
+    #[text("intent")]
+    _intent_kw: (),
+    #[text("{")]
+    _open: (),
+    pub entries: Vec<IntentEntry>,
+    #[text("}")]
+    _close: (),
+}
+
+#[derive(Debug, Rule)]
+pub struct IntentEntry {
+    pub name: Spanned<Identifier>,
+    pub pattern: Spanned<IntentPattern>,
+}
+
+#[derive(Debug, Rule)]
+pub enum IntentPattern {
+    Glob(StringLiteral),
+    Regex(RegexLiteral),
+}
+
+#[derive(Debug, Rule)]
+pub struct RegexLiteral {
+    #[leaf(re(r#"/[^/]+/"#))]
     pub text: String,
 }

@@ -905,6 +905,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "kite-parser",
+ "regex",
  "rust-sitter",
  "serde",
  "serde_json",

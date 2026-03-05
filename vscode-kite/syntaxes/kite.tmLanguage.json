@@ -30,7 +30,7 @@
     "keywords": {
       "patterns": [
         {
-          "match": "\\b(?:context|dictionary|boundary|forbid|forbidden|aggregate|String|Int|Decimal|Boolean|Date|Timestamp|Void|command|invariant|bound|to|symbol|hash)\\b",
+          "match": "\\b(?:context|dictionary|boundary|forbid|forbidden|aggregate|String|Int|Decimal|Boolean|Date|Timestamp|Void|command|invariant|bound|to|symbol|hash|intent)\\b",
           "name": "keyword.control.kite"
         }
       ]
@@ -55,6 +55,10 @@
       "patterns": [
         {
           "match": "[a-zA-Z_][a-zA-Z0-9_]*",
+          "name": "variable.other.kite"
+        },
+        {
+          "match": "/[^/]+/",
           "name": "variable.other.kite"
         }
       ]

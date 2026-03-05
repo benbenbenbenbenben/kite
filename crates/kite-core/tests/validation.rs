@@ -3,12 +3,12 @@ use kite_core::{
     CODE_BINDING_FILE_NOT_FOUND, CODE_BINDING_HASH_INVALID_FORMAT, CODE_BINDING_HASH_MISMATCH,
     CODE_BINDING_SYMBOL_MISSING, CODE_BINDING_SYMBOL_NOT_FOUND,
     CODE_BINDING_SYMBOL_UNVERIFIED_DEPENDENCY, CODE_COMMAND_BINDING_ARITY_MISMATCH,
-    CODE_COMMAND_BINDING_INTENT_SUSPICIOUS, CODE_CONTEXT_BOUNDARY_DUPLICATE_FORBID,
+    CODE_COMMAND_INTENT_MISMATCH, CODE_CONTEXT_BOUNDARY_DUPLICATE_FORBID,
     CODE_CONTEXT_BOUNDARY_FORBIDDEN, CODE_CONTEXT_BOUNDARY_SELF_FORBID,
     CODE_DICTIONARY_DUPLICATE_KEY, CODE_DICTIONARY_TERM_FORBIDDEN, CODE_DICTIONARY_TERM_PREFERRED,
     DOCS_BINDING_FILE_EMPTY, DOCS_BINDING_HASH_INVALID_FORMAT, DOCS_BINDING_HASH_MISMATCH,
     DOCS_BINDING_SYMBOL_MISSING, DOCS_BINDING_SYMBOL_NOT_FOUND,
-    DOCS_COMMAND_BINDING_ARITY_MISMATCH, DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS,
+    DOCS_COMMAND_BINDING_ARITY_MISMATCH, DOCS_COMMAND_INTENT_MISMATCH,
     DOCS_CONTEXT_BOUNDARY_DUPLICATE_FORBID, DOCS_CONTEXT_BOUNDARY_FORBIDDEN,
     DOCS_CONTEXT_BOUNDARY_SELF_FORBID, DOCS_DICTIONARY_DUPLICATE_KEY,
     DOCS_DICTIONARY_TERM_FORBIDDEN, DOCS_DICTIONARY_TERM_PREFERRED,
@@ -303,7 +303,7 @@ impl Order {
         r#"
 context SalesContext {
   aggregate Order {
-    command ship() bound to "src/domain/order.rs" symbol "Order::get_order"
+    command createOrder() bound to "src/domain/order.rs" symbol "Order::get_order"
   }
 }
 "#,
@@ -314,14 +314,11 @@ context SalesContext {
         .violations
         .iter()
         .find(|violation| {
-            violation.code == CODE_COMMAND_BINDING_INTENT_SUSPICIOUS
+            violation.code == CODE_COMMAND_INTENT_MISMATCH
                 && violation.severity == ViolationSeverity::Warning
         })
         .unwrap();
-    assert_eq!(
-        violation.docs_uri,
-        Some(DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS)
-    );
+    assert_eq!(violation.docs_uri, Some(DOCS_COMMAND_INTENT_MISMATCH));
     assert!(violation.hint.is_some());
     assert!(violation.span.is_some());
     assert_eq!(violation.span.unwrap().start_line, 4);
@@ -354,7 +351,7 @@ context SalesContext {
     assert!(report
         .violations
         .iter()
-        .all(|violation| violation.code != CODE_COMMAND_BINDING_INTENT_SUSPICIOUS));
+        .all(|violation| violation.code != CODE_COMMAND_INTENT_MISMATCH));
 }
 
 #[test]
@@ -384,7 +381,7 @@ context SalesContext {
     assert!(report
         .violations
         .iter()
-        .all(|violation| violation.code != CODE_COMMAND_BINDING_INTENT_SUSPICIOUS));
+        .all(|violation| violation.code != CODE_COMMAND_INTENT_MISMATCH));
 }
 
 #[test]
@@ -1930,6 +1927,227 @@ fn regression_minimal_pass_produces_no_errors() {
         errors.is_empty(),
         "expected-pass-minimal should produce no errors, got: {:?}",
         errors
+            .iter()
+            .map(|v| format!("[{}] {}", v.code, v.message))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn custom_intent_mismatch_produces_warning() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        "pub fn readOrder() {}\n",
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  intent {
+    mutator /^(create|update|delete|ship)/
+    accessor /^(read|fetch|list)/
+  }
+  aggregate Order {
+    command shipOrder() bound to "src/order.rs" symbol "readOrder"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    let violation = report
+        .violations
+        .iter()
+        .find(|v| v.code == CODE_COMMAND_INTENT_MISMATCH);
+    assert!(
+        violation.is_some(),
+        "expected COMMAND_INTENT_MISMATCH, got: {:?}",
+        report
+            .violations
+            .iter()
+            .map(|v| &v.code)
+            .collect::<Vec<_>>()
+    );
+    let v = violation.unwrap();
+    assert!(v.message.contains("mutator-oriented"));
+    assert!(v.message.contains("accessor-oriented"));
+}
+
+#[test]
+fn custom_intent_same_intent_passes() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        "pub fn shipFromWarehouse() {}\n",
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  intent {
+    mutator /^(create|update|delete|ship)/
+    accessor /^(read|fetch|list)/
+  }
+  aggregate Order {
+    command shipOrder() bound to "src/order.rs" symbol "shipFromWarehouse"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|v| v.code != CODE_COMMAND_INTENT_MISMATCH),
+        "should not produce intent mismatch when both match same intent"
+    );
+}
+
+#[test]
+fn custom_intent_unclassified_produces_info() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        "pub fn handleOrder() {}\n",
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  intent {
+    mutator /^(create|update|delete|ship)/
+    accessor /^(read|fetch|list)/
+  }
+  aggregate Order {
+    command processOrder() bound to "src/order.rs" symbol "handleOrder"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    let violation = report
+        .violations
+        .iter()
+        .find(|v| v.code == kite_core::CODE_COMMAND_INTENT_UNCLASSIFIED);
+    assert!(
+        violation.is_some(),
+        "expected COMMAND_INTENT_UNCLASSIFIED for explicit intent block, got: {:?}",
+        report
+            .violations
+            .iter()
+            .map(|v| &v.code)
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn default_intent_unclassified_does_not_warn() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        "pub fn handleOrder() {}\n",
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  aggregate Order {
+    command processOrder() bound to "src/order.rs" symbol "handleOrder"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|v| v.code != kite_core::CODE_COMMAND_INTENT_UNCLASSIFIED),
+        "should NOT produce unclassified warning with default intents"
+    );
+}
+
+#[test]
+fn intent_prefix_glob_pattern_works() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        "pub fn getOrderData() {}\n",
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  intent {
+    writer "create*"
+    reader "get*"
+  }
+  aggregate Order {
+    command createOrder() bound to "src/order.rs" symbol "getOrderData"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    let violation = report
+        .violations
+        .iter()
+        .find(|v| v.code == CODE_COMMAND_INTENT_MISMATCH);
+    assert!(
+        violation.is_some(),
+        "expected COMMAND_INTENT_MISMATCH with glob prefix, got: {:?}",
+        report
+            .violations
+            .iter()
+            .map(|v| format!("[{}] {}", v.code, v.message))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn intent_suffix_glob_pattern_works() {
+    let temp_dir = TempDir::new().unwrap();
+    create_file(
+        &temp_dir.path().join("src/order.rs"),
+        "pub fn orderQuery() {}\n",
+    );
+    let kite_path = temp_dir.path().join("main.kite");
+    create_file(
+        &kite_path,
+        r#"
+context SalesContext {
+  intent {
+    writer "*Command"
+    reader "*Query"
+  }
+  aggregate Order {
+    command handleCommand() bound to "src/order.rs" symbol "orderQuery"
+  }
+}
+"#,
+    );
+
+    let report = check_file(&kite_path).unwrap();
+    let violation = report
+        .violations
+        .iter()
+        .find(|v| v.code == CODE_COMMAND_INTENT_MISMATCH);
+    assert!(
+        violation.is_some(),
+        "expected COMMAND_INTENT_MISMATCH with glob suffix, got: {:?}",
+        report
+            .violations
             .iter()
             .map(|v| format!("[{}] {}", v.code, v.message))
             .collect::<Vec<_>>()

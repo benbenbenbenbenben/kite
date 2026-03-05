@@ -1201,6 +1201,55 @@ fn document_symbols_for_source(source: &str) -> Vec<DocumentSymbol> {
                         children: Some(boundary_children),
                     });
                 }
+                kite_parser::grammar::ContextElement::Intent(intent) => {
+                    let mut intent_children = Vec::new();
+                    for entry in &intent.entries {
+                        intent_children.push(DocumentSymbol {
+                            name: entry.name.text.clone(),
+                            detail: Some("intent".to_owned()),
+                            kind: SymbolKind::ENUM_MEMBER,
+                            tags: None,
+                            deprecated: None,
+                            range: range_from_position(
+                                entry.name.position.start.line,
+                                entry.name.position.start.column,
+                                entry.name.position.end.line,
+                                entry.name.position.end.column,
+                            ),
+                            selection_range: range_from_position(
+                                entry.name.position.start.line,
+                                entry.name.position.start.column,
+                                entry.name.position.end.line,
+                                entry.name.position.end.column,
+                            ),
+                            children: None,
+                        });
+                    }
+
+                    let sel = intent
+                        .entries
+                        .first()
+                        .map(|e| {
+                            range_from_position(
+                                e.name.position.start.line,
+                                e.name.position.start.column,
+                                e.name.position.start.line,
+                                e.name.position.start.column,
+                            )
+                        })
+                        .unwrap_or_else(|| Range::new(Position::new(0, 0), Position::new(0, 0)));
+
+                    context_children.push(DocumentSymbol {
+                        name: "intent".to_owned(),
+                        detail: Some("intent".to_owned()),
+                        kind: SymbolKind::ENUM,
+                        tags: None,
+                        deprecated: None,
+                        range: sel,
+                        selection_range: sel,
+                        children: Some(intent_children),
+                    });
+                }
                 kite_parser::grammar::ContextElement::Aggregate(aggregate) => {
                     let mut aggregate_children = Vec::new();
                     for member in aggregate.members {

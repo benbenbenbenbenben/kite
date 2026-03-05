@@ -1,5 +1,7 @@
 use crate::type_ref_name;
-use kite_parser::grammar::{AggregateMember, Binding, ContextElement, DictValue, RuleBody};
+use kite_parser::grammar::{
+    AggregateMember, Binding, ContextElement, DictValue, IntentPattern, RuleBody,
+};
 
 pub fn format_source(source: &str) -> anyhow::Result<String> {
     let ast = kite_parser::parse(source)?;
@@ -34,6 +36,17 @@ pub fn format_source(source: &str) -> anyhow::Result<String> {
                     out.push_str("  boundary {\n");
                     for entry in &boundary.entries {
                         out.push_str(&format!("    forbid {}\n", entry.context.text));
+                    }
+                    out.push_str("  }\n\n");
+                }
+                ContextElement::Intent(intent) => {
+                    out.push_str("  intent {\n");
+                    for entry in &intent.entries {
+                        let pattern_str = match &entry.pattern.value {
+                            IntentPattern::Glob(s) => s.text.clone(),
+                            IntentPattern::Regex(r) => r.text.clone(),
+                        };
+                        out.push_str(&format!("    {} {}\n", entry.name.text, pattern_str));
                     }
                     out.push_str("  }\n\n");
                 }

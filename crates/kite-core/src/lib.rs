@@ -10,8 +10,8 @@ pub use formatter::format_source;
 use grammar_registry::GrammarRegistry;
 use kite_parser::grammar::{
     Aggregate, AggregateMember, Binding, BindingHash, BindingSymbol, Boundary, BoundaryEntry,
-    Command, Context as DomainContext, ContextElement, DictEntry, DictValue, Dictionary, Invariant,
-    PrimitiveType, RuleBody, TypeRef,
+    Command, Context as DomainContext, ContextElement, DictEntry, DictValue, Dictionary, Intent,
+    IntentPattern, Invariant, PrimitiveType, RuleBody, TypeRef,
 };
 pub use scaffolder::scaffold;
 use sha2::{Digest, Sha256};
@@ -26,7 +26,10 @@ pub const CODE_BINDING_SYMBOL_NOT_FOUND: &str = "BINDING_SYMBOL_NOT_FOUND";
 pub const CODE_BINDING_SYMBOL_UNSUPPORTED_LANGUAGE: &str = "BINDING_SYMBOL_UNSUPPORTED_LANGUAGE";
 pub const CODE_BINDING_SYMBOL_QUERY_MISSING: &str = "BINDING_SYMBOL_QUERY_MISSING";
 pub const CODE_COMMAND_BINDING_ARITY_MISMATCH: &str = "COMMAND_BINDING_ARITY_MISMATCH";
-pub const CODE_COMMAND_BINDING_INTENT_SUSPICIOUS: &str = "COMMAND_BINDING_INTENT_SUSPICIOUS";
+pub const CODE_COMMAND_BINDING_INTENT_SUSPICIOUS: &str = "COMMAND_INTENT_MISMATCH";
+pub const CODE_COMMAND_INTENT_MISMATCH: &str = "COMMAND_INTENT_MISMATCH";
+pub const CODE_COMMAND_INTENT_UNCLASSIFIED: &str = "COMMAND_INTENT_UNCLASSIFIED";
+pub const CODE_INTENT_PATTERN_INVALID: &str = "INTENT_PATTERN_INVALID";
 pub const CODE_DICTIONARY_TERM_FORBIDDEN: &str = "DICTIONARY_TERM_FORBIDDEN";
 pub const CODE_DICTIONARY_TERM_PREFERRED: &str = "DICTIONARY_TERM_PREFERRED";
 pub const CODE_DICTIONARY_DUPLICATE_KEY: &str = "DICTIONARY_DUPLICATE_KEY";
@@ -50,7 +53,13 @@ pub const DOCS_BINDING_SYMBOL_QUERY_MISSING: &str =
 pub const DOCS_COMMAND_BINDING_ARITY_MISMATCH: &str =
     "https://docs.kite.dev/diagnostics/command-binding-arity-mismatch";
 pub const DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS: &str =
-    "https://docs.kite.dev/diagnostics/command-binding-intent-suspicious";
+    "https://docs.kite.dev/diagnostics/command-intent-mismatch";
+pub const DOCS_COMMAND_INTENT_MISMATCH: &str =
+    "https://docs.kite.dev/diagnostics/command-intent-mismatch";
+pub const DOCS_COMMAND_INTENT_UNCLASSIFIED: &str =
+    "https://docs.kite.dev/diagnostics/command-intent-unclassified";
+pub const DOCS_INTENT_PATTERN_INVALID: &str =
+    "https://docs.kite.dev/diagnostics/intent-pattern-invalid";
 pub const DOCS_DICTIONARY_TERM_FORBIDDEN: &str =
     "https://docs.kite.dev/diagnostics/dictionary-term-forbidden";
 pub const DOCS_DICTIONARY_TERM_PREFERRED: &str =
@@ -635,6 +644,7 @@ pub fn hover_at(
                             }
                         }
                     }
+                    ContextElement::Intent(_) => {}
                 }
             }
             let markdown = format!(
@@ -839,6 +849,7 @@ pub fn hover_at(
                         }
                     }
                 }
+                ContextElement::Intent(_) => {}
             }
         }
     }
@@ -1185,6 +1196,15 @@ pub fn semantic_tokens(source: &str) -> Result<Vec<SemanticToken>> {
                         );
                     }
                 }
+                ContextElement::Intent(intent) => {
+                    for entry in &intent.entries {
+                        push_spanned_token(
+                            &mut tokens,
+                            &entry.name.position,
+                            SemanticTokenKind::Property,
+                        );
+                    }
+                }
             }
         }
     }
@@ -1524,16 +1544,191 @@ fn validate_context(
                 adapter_runtime,
                 violations,
             ),
-            ContextElement::Aggregate(aggregate) => validate_aggregate(
-                &aggregate,
-                base_dir,
-                grammar_registry,
-                adapter_runtime,
-                violations,
-            )?,
+            ContextElement::Aggregate(aggregate) => {
+                let intent_set = extract_context_intents(context, violations);
+                validate_aggregate(
+                    &aggregate,
+                    base_dir,
+                    grammar_registry,
+                    adapter_runtime,
+                    &intent_set,
+                    violations,
+                )?;
+            }
+            ContextElement::Intent(_) => {}
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Intent infrastructure
+// ---------------------------------------------------------------------------
+
+/// A compiled intent pattern ready for matching.
+#[derive(Debug, Clone)]
+pub struct CompiledIntent {
+    pub name: String,
+    matcher: IntentMatcher,
+}
+
+/// A set of compiled intents with metadata about origin.
+#[derive(Debug, Clone)]
+struct IntentSet {
+    intents: Vec<CompiledIntent>,
+    is_explicit: bool,
+}
+
+#[derive(Debug, Clone)]
+enum IntentMatcher {
+    Prefix(String),
+    Suffix(String),
+    Regex(regex::Regex),
+}
+
+impl CompiledIntent {
+    fn matches(&self, name: &str) -> bool {
+        // Lowercase the name for case-insensitive matching on the first character
+        let lower = name.to_ascii_lowercase();
+        match &self.matcher {
+            IntentMatcher::Prefix(p) => lower.starts_with(p),
+            IntentMatcher::Suffix(s) => lower.ends_with(s),
+            IntentMatcher::Regex(r) => r.is_match(&lower),
+        }
+    }
+}
+
+fn default_intents() -> IntentSet {
+    IntentSet {
+        intents: vec![
+            CompiledIntent {
+                name: "writer".to_owned(),
+                matcher: IntentMatcher::Regex(
+                    regex::Regex::new(r"^(create|add|update|set|remove|delete)").unwrap(),
+                ),
+            },
+            CompiledIntent {
+                name: "reader".to_owned(),
+                matcher: IntentMatcher::Regex(
+                    regex::Regex::new(r"^(get|list|find|read|fetch)").unwrap(),
+                ),
+            },
+        ],
+        is_explicit: false,
+    }
+}
+
+fn extract_context_intents(context: &DomainContext, violations: &mut Vec<Violation>) -> IntentSet {
+    // Find the intent block, if any
+    let intent_block: Option<&Intent> = context.elements.iter().find_map(|e| match e {
+        ContextElement::Intent(i) => Some(i),
+        _ => None,
+    });
+
+    let Some(intent) = intent_block else {
+        return default_intents();
+    };
+
+    let mut intents = Vec::new();
+    for entry in &intent.entries {
+        let name = entry.name.text.clone();
+        let pattern = &entry.pattern.value;
+        match compile_intent_pattern(pattern) {
+            Ok(matcher) => intents.push(CompiledIntent { name, matcher }),
+            Err(msg) => {
+                let pattern_text = match pattern {
+                    IntentPattern::Glob(s) => s.text.clone(),
+                    IntentPattern::Regex(r) => r.text.clone(),
+                };
+                violations.push(Violation {
+                    severity: ViolationSeverity::Error,
+                    code: CODE_INTENT_PATTERN_INVALID,
+                    message: format!(
+                        "invalid intent pattern for '{}': {} — {}",
+                        name, pattern_text, msg
+                    ),
+                    hint: Some(
+                        "use a glob like \"prefix*\" or \"*suffix\", or a regex like /^pattern/"
+                            .to_owned(),
+                    ),
+                    docs_uri: Some(DOCS_INTENT_PATTERN_INVALID),
+                    span: Some(span_from_position(&entry.pattern.position)),
+                    source_span: None,
+                    kite_spec: None,
+                });
+            }
+        }
+    }
+    IntentSet {
+        intents,
+        is_explicit: true,
+    }
+}
+
+fn compile_intent_pattern(pattern: &IntentPattern) -> std::result::Result<IntentMatcher, String> {
+    match pattern {
+        IntentPattern::Glob(s) => {
+            let text = unquote(&s.text);
+            if text.starts_with('*') && text.ends_with('*') {
+                // *word* — contains match, treat as regex
+                let inner = &text[1..text.len() - 1];
+                let re = regex::Regex::new(&regex::escape(inner))
+                    .map_err(|e| format!("regex error: {}", e))?;
+                Ok(IntentMatcher::Regex(re))
+            } else if text.ends_with('*') {
+                // prefix*
+                Ok(IntentMatcher::Prefix(
+                    text[..text.len() - 1].to_ascii_lowercase(),
+                ))
+            } else if text.starts_with('*') {
+                // *suffix
+                Ok(IntentMatcher::Suffix(text[1..].to_ascii_lowercase()))
+            } else {
+                // Exact match — treat as prefix
+                Ok(IntentMatcher::Prefix(text.to_ascii_lowercase()))
+            }
+        }
+        IntentPattern::Regex(r) => {
+            // Strip leading/trailing /
+            let text = &r.text;
+            let inner = text
+                .strip_prefix('/')
+                .and_then(|s| s.strip_suffix('/'))
+                .unwrap_or(text);
+            let re = regex::Regex::new(inner).map_err(|e| format!("invalid regex: {}", e))?;
+            Ok(IntentMatcher::Regex(re))
+        }
+    }
+}
+
+fn classify_name<'a>(name: &str, intents: &'a [CompiledIntent]) -> Option<&'a str> {
+    // First match wins (priority order)
+    for intent in intents {
+        if intent.matches(name) {
+            return Some(&intent.name);
+        }
+    }
+    None
+}
+
+fn resolve_span_for_symbol(
+    target_path: &Path,
+    symbol: &str,
+    grammar_registry: &GrammarRegistry,
+    adapter_runtime: &AdapterRuntimeEngine<'_>,
+) -> Option<ViolationSpan> {
+    if !target_path.exists() {
+        return None;
+    }
+    let language = adapter_runtime.language_for_path(target_path)?;
+    let query = grammar_registry
+        .query_for(&language, "symbol_exists")
+        .ok()??;
+    let source = std::fs::read_to_string(target_path).ok()?;
+    adapter_runtime
+        .find_symbol_span(&language, target_path, &source, symbol, &query)
+        .ok()
+        .flatten()
 }
 
 fn collect_context_bound_sources(
@@ -1859,6 +2054,7 @@ fn validate_aggregate(
     base_dir: &Path,
     grammar_registry: &GrammarRegistry,
     adapter_runtime: &AdapterRuntimeEngine<'_>,
+    intent_set: &IntentSet,
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     if let Some(binding) = &aggregate.binding {
@@ -1879,6 +2075,7 @@ fn validate_aggregate(
                 base_dir,
                 grammar_registry,
                 adapter_runtime,
+                intent_set,
                 violations,
             )?,
             AggregateMember::Invariant(invariant) => validate_invariant(
@@ -1937,6 +2134,7 @@ fn validate_command(
     base_dir: &Path,
     grammar_registry: &GrammarRegistry,
     adapter_runtime: &AdapterRuntimeEngine<'_>,
+    intent_set: &IntentSet,
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
     if let RuleBody::Binding(binding) = &command.body {
@@ -1947,6 +2145,7 @@ fn validate_command(
             base_dir,
             grammar_registry,
             adapter_runtime,
+            intent_set,
             violations,
         )?;
         validate_binding(
@@ -1976,83 +2175,75 @@ fn validate_command_binding_intent(
     base_dir: &Path,
     grammar_registry: &GrammarRegistry,
     adapter_runtime: &AdapterRuntimeEngine<'_>,
+    intent_set: &IntentSet,
     violations: &mut Vec<Violation>,
 ) -> Result<()> {
-    const WRITE_PREFIXES: [&str; 8] = [
-        "create", "add", "update", "set", "remove", "delete", "ship", "cancel",
-    ];
-    const READ_PREFIXES: [&str; 4] = ["get", "list", "find", "read"];
-
     let Some(symbol_binding) = &binding.symbol else {
         return Ok(());
     };
-    if !starts_with_any_prefix(&command.name.text, &WRITE_PREFIXES) {
-        return Ok(());
-    }
 
     let symbol = unquote(&symbol_binding.symbol.text);
     let symbol_leaf = symbol_leaf_name(&symbol);
-    if !starts_with_any_prefix(symbol_leaf, &READ_PREFIXES) {
-        return Ok(());
-    }
 
-    let target = unquote(&binding.target.text);
-    let target_path = resolve_bound_path(base_dir, &target);
-    let mut source_content = None;
-    let source_span = if target_path.exists() {
-        if let Some(language) = adapter_runtime.language_for_path(&target_path) {
-            if let Ok(Some(query)) = grammar_registry.query_for(&language, "symbol_exists") {
-                if let Ok(source) = std::fs::read_to_string(&target_path) {
-                    let span = adapter_runtime
-                        .find_symbol_span(&language, &target_path, &source, &symbol, &query)
-                        .ok()
-                        .flatten();
-                    source_content = Some(source);
-                    span
-                } else {
-                    None
+    let cmd_intent = classify_name(&command.name.text, &intent_set.intents);
+    let sym_intent = classify_name(symbol_leaf, &intent_set.intents);
+
+    match (&cmd_intent, &sym_intent) {
+        (Some(cmd_cat), Some(sym_cat)) if cmd_cat != sym_cat => {
+            // Mismatch: different intent categories
+            let target = unquote(&binding.target.text);
+            let target_path = resolve_bound_path(base_dir, &target);
+            let source_span =
+                resolve_span_for_symbol(&target_path, &symbol, grammar_registry, adapter_runtime);
+
+            let message = format!(
+                "command '{}' is {}-oriented but bound symbol '{}' is {}-oriented",
+                command.name.text, cmd_cat, symbol, sym_cat
+            );
+
+            violations.push(
+                Violation {
+                    severity: ViolationSeverity::Warning,
+                    code: CODE_COMMAND_INTENT_MISMATCH,
+                    message,
+                    hint: Some(format!(
+                        "bind to a {}-oriented symbol, or rename the command/symbol so intents match",
+                        cmd_cat
+                    )),
+                    docs_uri: Some(DOCS_COMMAND_INTENT_MISMATCH),
+                    span: Some(span_from_symbol_binding(symbol_binding)),
+                    source_span,
+                    kite_spec: None,
                 }
-            } else {
-                None
-            }
-        } else {
-            None
+                .with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)),
+            );
         }
-    } else {
-        None
-    };
-
-    let mut message = format!(
-        "command '{}' looks write-oriented but bound symbol '{}' looks read-oriented",
-        command.name.text, symbol
-    );
-
-    if let Some(span) = source_span {
-        if let Some(source) = source_content {
-            if let Some(snippet) = extract_source_snippet(&source, &span) {
-                message.push_str("\n\n");
-                message.push_str(&snippet);
-            }
+        (None, None) if intent_set.is_explicit => {
+            // Neither side classifiable — only warn if user defined intents explicitly
+            violations.push(
+                Violation {
+                    severity: ViolationSeverity::Information,
+                    code: CODE_COMMAND_INTENT_UNCLASSIFIED,
+                    message: format!(
+                        "cannot classify intent for command '{}' → symbol '{}'",
+                        command.name.text, symbol
+                    ),
+                    hint: Some(
+                        "extend the intent block to classify this command, or rename to match an existing pattern"
+                            .to_owned(),
+                    ),
+                    docs_uri: Some(DOCS_COMMAND_INTENT_UNCLASSIFIED),
+                    span: Some(span_from_symbol_binding(symbol_binding)),
+                    source_span: None,
+                    kite_spec: None,
+                }
+                .with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)),
+            );
         }
-        message.push_str(&format!(
-            "\n\nSource: {}:{}:{}",
-            target, span.start_line, span.start_column
-        ));
+        _ => {
+            // Same intent, or one side unclassified — acceptable
+        }
     }
-
-    violations.push(Violation {
-        severity: ViolationSeverity::Warning,
-        code: CODE_COMMAND_BINDING_INTENT_SUSPICIOUS,
-        message,
-        hint: Some(
-            "bind this command to a write-oriented symbol or rename the command/symbol so intents match"
-                .to_owned(),
-        ),
-        docs_uri: Some(DOCS_COMMAND_BINDING_INTENT_SUSPICIOUS),
-        span: Some(span_from_symbol_binding(symbol_binding)),
-        source_span,
-        kite_spec: None,
-    }.with_kite_spec(format!("{}.{}", aggregate_name, command.name.text)));
 
     Ok(())
 }
@@ -2521,11 +2712,6 @@ fn symbol_leaf_name(symbol: &str) -> &str {
         .rsplit(|character| matches!(character, ':' | '.' | '#'))
         .next()
         .unwrap_or(symbol)
-}
-
-fn starts_with_any_prefix(name: &str, prefixes: &[&str]) -> bool {
-    let lower_name = name.to_ascii_lowercase();
-    prefixes.iter().any(|prefix| lower_name.starts_with(prefix))
 }
 
 fn language_display_name_from_registry(
