@@ -158,6 +158,13 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const editor of vscode.window.visibleTextEditors) {
       applySourceDecorations(editor);
     }
+
+    // Refresh again after a short delay so .kite diagnostics have time to
+    // settle — the publishAssociations notification may arrive before VS Code
+    // has processed the latest .kite diagnostic publication.
+    setTimeout(() => {
+      refreshBindingStatuses();
+    }, 200);
   });
 
   function refreshBindingStatuses(): void {
@@ -582,8 +589,10 @@ function labelForDiagnostic(diagnostic: vscode.Diagnostic): string {
       return 'kite: invalid hash format';
     case 'COMMAND_BINDING_ARITY_MISMATCH':
       return 'kite: binding arity mismatch';
-    case 'COMMAND_BINDING_INTENT_SUSPICIOUS':
-      return 'kite: suspicious binding';
+    case 'COMMAND_INTENT_MISMATCH':
+      return 'kite: intent mismatch';
+    case 'COMMAND_INTENT_UNCLASSIFIED':
+      return 'kite: unclassified intent';
     default:
       return 'kite: binding diagnostic';
   }
