@@ -327,6 +327,16 @@ pub fn check_workspace(root: &Path) -> Result<CheckReport> {
 /// information — no grammar loading, no WASM, no validation.
 /// Intended for the LSP decoration pipeline where we just need spec→file mappings.
 pub fn collect_workspace_bindings(root: &Path) -> Result<Vec<BoundSpec>> {
+    collect_workspace_bindings_with_overrides(root, &std::collections::HashMap::new())
+}
+
+/// Like `collect_workspace_bindings` but accepts in-memory content overrides
+/// for open documents. If a `.kite` file has an entry in `content_overrides`,
+/// that content is used instead of reading from disk.
+pub fn collect_workspace_bindings_with_overrides(
+    root: &Path,
+    content_overrides: &std::collections::HashMap<PathBuf, String>,
+) -> Result<Vec<BoundSpec>> {
     let mut kite_files = Vec::new();
     walk_for_kite_files(root, &mut kite_files, 0);
     kite_files.sort();
@@ -353,8 +363,15 @@ pub fn collect_workspace_bindings(root: &Path) -> Result<Vec<BoundSpec>> {
             .collect();
 
         for kite_file in dir_kite_files {
-            let Ok(source) = std::fs::read_to_string(kite_file) else {
-                continue;
+            // Use in-memory content if available, otherwise read from disk
+            let source = if let Some(override_content) = content_overrides.get(kite_file.as_path())
+            {
+                override_content.clone()
+            } else {
+                let Ok(s) = std::fs::read_to_string(kite_file) else {
+                    continue;
+                };
+                s
             };
             let Ok(ast) = kite_parser::parse(&source) else {
                 continue;

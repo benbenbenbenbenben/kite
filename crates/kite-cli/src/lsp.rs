@@ -92,10 +92,18 @@ async fn run_workspace_diagnostics(
         publish_diagnostics(client, uri.clone(), diagnostics, None).await;
     }
 
+    // Build content overrides from open .kite documents so we use
+    // the editor buffer content instead of stale on-disk content
+    let content_overrides: std::collections::HashMap<std::path::PathBuf, String> = open_docs
+        .iter()
+        .filter(|(uri, _)| uri.path().ends_with(".kite"))
+        .filter_map(|(uri, text)| uri.to_file_path().ok().map(|p| (p, text.clone())))
+        .collect();
+
     // Collect bindings for the entire workspace (fast path: parse-only, no validation)
     let mut all_bindings = Vec::new();
     for root in &roots {
-        match kite_core::collect_workspace_bindings(root) {
+        match kite_core::collect_workspace_bindings_with_overrides(root, &content_overrides) {
             Ok(bindings) => {
                 client
                     .log_message(
