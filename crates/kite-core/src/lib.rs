@@ -415,8 +415,97 @@ pub fn collect_workspace_bindings(root: &Path) -> Result<Vec<BoundSpec>> {
             }
         }
     }
+    // Resolve source spans by batching symbol lookups per target file.
+    // This loads the grammar once per language and parses each file once.
+    resolve_binding_spans(&mut all_bindings, root);
 
     Ok(all_bindings)
+}
+
+/// Resolve source_span for bindings that have a symbol clause.
+/// Groups by target_path, loads each source file once, and looks up
+/// all symbols in a single tree-sitter pass.
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_binding_spans(bindings: &mut [BoundSpec], root: &Path) {
+    use std::collections::HashMap;
+
+    // Group binding indices by target_path
+    let mut by_target: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+    for (i, binding) in bindings.iter().enumerate() {
+        if binding.symbol.is_some() {
+            by_target
+                .entry(binding.target_path.clone())
+                .or_default()
+                .push(i);
+        }
+    }
+
+    if by_target.is_empty() {
+        return;
+    }
+
+    // Load grammars from the workspace root
+    let Ok(grammar_root) = resolve_grammar_root(root) else {
+        return;
+    };
+    let Ok(registry) = GrammarRegistry::load(&grammar_root) else {
+        return;
+    };
+
+    for (target_path, indices) in &by_target {
+        // Determine language from file extension
+        let Some(language) = registry.language_for_path(target_path) else {
+            continue;
+        };
+
+        // Read the source file once
+        let Ok(source) = std::fs::read_to_string(target_path) else {
+            continue;
+        };
+
+        // Get the symbol_exists query for this language
+        let Ok(Some(query_source)) = registry.query_for(language, "symbol_exists") else {
+            continue;
+        };
+
+        // Collect unique symbols to look up
+        let symbols: Vec<&str> = indices
+            .iter()
+            .filter_map(|&i| bindings[i].symbol.as_deref())
+            .collect();
+
+        let is_tsx = target_path.extension().and_then(|e| e.to_str()) == Some("tsx");
+
+        // Find all symbol spans in one pass
+        let Ok(spans) = wasm_adapter::find_all_symbol_spans(
+            &registry,
+            language,
+            is_tsx,
+            &source,
+            &symbols,
+            &query_source,
+        ) else {
+            continue;
+        };
+
+        // Apply resolved spans back to bindings
+        for &i in indices {
+            if let Some(symbol) = &bindings[i].symbol {
+                let leaf = symbol
+                    .rsplit(|c: char| matches!(c, ':' | '.' | '#'))
+                    .find(|s| !s.is_empty())
+                    .unwrap_or(symbol);
+                if let Some(span) = spans.get(leaf) {
+                    bindings[i].source_span = Some(*span);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn resolve_binding_spans(_bindings: &mut [BoundSpec], _root: &Path) {
+    // On wasm32, symbol resolution is handled via JS bridge — skip here
 }
 
 fn walk_for_kite_files(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {

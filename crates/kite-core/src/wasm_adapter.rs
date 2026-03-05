@@ -65,6 +65,68 @@ pub fn find_symbol_span(
     Ok(None)
 }
 
+/// Find spans for multiple symbols in a single source file.
+/// Creates one parser and parses the file once — much faster than
+/// calling `find_symbol_span` per symbol.
+pub fn find_all_symbol_spans(
+    registry: &GrammarRegistry,
+    language: &str,
+    is_tsx: bool,
+    source: &str,
+    symbols: &[&str],
+    query_source: &str,
+) -> Result<std::collections::HashMap<String, crate::ViolationSpan>> {
+    let mut result = std::collections::HashMap::new();
+
+    if symbols.is_empty() {
+        return Ok(result);
+    }
+
+    let Some((mut parser, ts_language)) = create_parser(registry, language, is_tsx)? else {
+        return Ok(result);
+    };
+
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("tree-sitter failed to parse {} source", language))?;
+
+    let query = Query::new(&ts_language, query_source)?;
+    let mut query_cursor = QueryCursor::new();
+    let capture_names = query.capture_names();
+
+    // Build a set of leaf symbol names to find
+    let target_set: std::collections::HashSet<&str> =
+        symbols.iter().map(|s| symbol_leaf_name(s)).collect();
+
+    let mut query_matches = query_cursor.matches(&query, tree.root_node(), source.as_bytes());
+    while let Some(query_match) = query_matches.next() {
+        for capture in query_match.captures {
+            let capture_name = capture_names[capture.index as usize];
+            if capture_name != "name" {
+                continue;
+            }
+
+            if let Ok(captured_text) = capture.node.utf8_text(source.as_bytes()) {
+                if target_set.contains(captured_text) && !result.contains_key(captured_text) {
+                    let start = capture.node.start_position();
+                    let end = capture.node.end_position();
+                    result.insert(
+                        captured_text.to_owned(),
+                        crate::ViolationSpan {
+                            start_line: start.row + 1,
+                            start_column: start.column + 1,
+                            end_line: end.row + 1,
+                            end_column: end.column + 1,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 pub fn nearest_symbol(
     registry: &GrammarRegistry,
     language: &str,
