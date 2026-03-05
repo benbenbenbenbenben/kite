@@ -22,8 +22,8 @@ context ArityDemoContext {
 // Intent: write command bound to a read-only function
 context IntentDemoContext {
   intent {
-    writer /set|update|create/
-    reader /get|fetch|list/
+    wrier /set|update|create/
+    reder /get|fetch|list/
   }
   aggregate IntentDemo bound to "../src/lib/demos/intent_demo.ts" symbol "IntentDemo" {
     command updateProfile() bound to "../src/lib/demos/intent_demo.ts" symbol "getProfile"
