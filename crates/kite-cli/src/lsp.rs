@@ -364,12 +364,18 @@ impl LanguageServer for Backend {
             let uri = params.text_document.uri;
             let text = change.text;
             let version = params.text_document.version;
+            let is_kite = uri.path().ends_with(".kite");
             self.set_open_document(uri.clone(), text.clone());
             let client = self.client.clone();
             tokio::spawn(async move {
                 let diagnostics = diagnostics_for_source(&text, &uri);
                 publish_diagnostics(&client, uri, diagnostics, Some(version)).await;
             });
+            // When a .kite file changes, refresh workspace bindings so that
+            // CodeLens and source-file diagnostics update reactively.
+            if is_kite {
+                self.spawn_workspace_diagnostics();
+            }
         }
     }
 
