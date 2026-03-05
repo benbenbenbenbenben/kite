@@ -3,19 +3,20 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
-    CodeActionProviderCapability, CodeActionResponse, CodeDescription, CompletionItem,
-    CompletionItemKind, CompletionParams, CompletionResponse, CreateFile, CreateFileOptions,
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentChangeOperation, DocumentChanges, DocumentSymbol, DocumentSymbolParams,
-    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InlayHint,
-    InlayHintKind, InlayHintLabel, InlayHintParams, Location, MarkupContent, MarkupKind,
-    MessageType, NumberOrString, OneOf, Position, PrepareRenameResponse, PublishDiagnosticsParams,
-    Range, ResourceOp, SemanticToken as LspSemanticToken, SemanticTokenType, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensParams,
-    SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    CodeActionProviderCapability, CodeActionResponse, CodeDescription, CodeLens, CodeLensOptions,
+    CodeLensParams, Command, CompletionItem, CompletionItemKind, CompletionParams,
+    CompletionResponse, CreateFile, CreateFileOptions, Diagnostic, DiagnosticRelatedInformation,
+    DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentChangeOperation,
+    DocumentChanges, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, Location, MarkupContent,
+    MarkupKind, MessageType, NumberOrString, OneOf, Position, PrepareRenameResponse,
+    PublishDiagnosticsParams, Range, ResourceOp, SemanticToken as LspSemanticToken,
+    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{jsonrpc, Client, LanguageServer, LspService, Server};
 
@@ -276,7 +277,9 @@ impl LanguageServer for Backend {
                         },
                     ),
                 ),
-                inlay_hint_provider: Some(OneOf::Left(true)),
+                code_lens_provider: Some(CodeLensOptions {
+                    resolve_provider: Some(false),
+                }),
                 ..ServerCapabilities::default()
             },
             ..InitializeResult::default()
@@ -532,7 +535,7 @@ impl LanguageServer for Backend {
         }))
     }
 
-    async fn inlay_hint(&self, params: InlayHintParams) -> jsonrpc::Result<Option<Vec<InlayHint>>> {
+    async fn code_lens(&self, params: CodeLensParams) -> jsonrpc::Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
         let Ok(target_path) = uri.to_file_path() else {
             return Ok(None);
@@ -550,33 +553,38 @@ impl LanguageServer for Backend {
             .lock()
             .map(|b| b.clone())
             .unwrap_or_default();
-        let mut hints = Vec::new();
+        let mut lenses = Vec::new();
 
         for binding in bindings {
             if binding.target_path == target_path {
-                let position = if let Some(span) = binding.source_span {
-                    Position::new(
-                        (span.start_line.saturating_sub(1)) as u32,
-                        (span.start_column.saturating_sub(1)) as u32,
-                    )
-                } else {
-                    Position::new(0, 0)
+                let Some(span) = binding.source_span else {
+                    continue;
                 };
+                let line = (span.start_line.saturating_sub(1)) as u32;
+                let range = Range::new(Position::new(line, 0), Position::new(line, 0));
 
-                hints.push(InlayHint {
-                    position,
-                    label: InlayHintLabel::String(format!("← {}", binding.kite_spec)),
-                    kind: Some(InlayHintKind::TYPE),
-                    text_edits: None,
-                    tooltip: None,
-                    padding_left: Some(true),
-                    padding_right: None,
+                let kite_file_display = binding
+                    .kite_file
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+
+                lenses.push(CodeLens {
+                    range,
+                    command: Some(Command {
+                        title: format!("🪁 {} ({})", binding.kite_spec, kite_file_display),
+                        command: "kite.openSpec".to_string(),
+                        arguments: Some(vec![
+                            serde_json::json!(binding.kite_file.display().to_string()),
+                            serde_json::json!(binding.kite_span.start_line),
+                        ]),
+                    }),
                     data: None,
                 });
             }
         }
 
-        Ok(Some(hints))
+        Ok(Some(lenses))
     }
 
     async fn semantic_tokens_full(

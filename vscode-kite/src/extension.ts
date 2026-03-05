@@ -77,7 +77,6 @@ type SourceAugmentation = {
 
 const kiteDiagnosticsByDocument = new Map<string, Map<string, SourceAugmentation[]>>();
 const sourceAugmentations = new Map<string, SourceAugmentation[]>();
-const sourceInlayHintEmitter = new vscode.EventEmitter<void>();
 const sourceDiagnosticDecorationType = vscode.window.createTextEditorDecorationType({
   after: {
     color: new vscode.ThemeColor('editorCodeLens.foreground'),
@@ -87,32 +86,6 @@ const sourceDiagnosticDecorationType = vscode.window.createTextEditorDecorationT
   overviewRulerLane: vscode.OverviewRulerLane.Right
 });
 
-const sourceInlayHintsProvider: vscode.InlayHintsProvider = {
-  onDidChangeInlayHints: sourceInlayHintEmitter.event,
-  provideInlayHints(document, range) {
-    const entries = sourceAugmentations.get(document.uri.toString());
-    if (!entries || entries.length === 0) {
-      return [];
-    }
-
-    return entries.flatMap((entry) => {
-      const line = clampLine(
-        entry.sourceLine !== undefined ? entry.sourceLine : entry.line,
-        document.lineCount
-      );
-      if (line < range.start.line || line > range.end.line) {
-        return [];
-      }
-
-      const position = document.lineAt(line).range.end;
-      const label = entry.kiteSpec ? `← ${entry.kiteSpec}` : entry.label;
-      const hint = new vscode.InlayHint(position, label, vscode.InlayHintKind.Type);
-      hint.paddingLeft = true;
-      hint.tooltip = entry.detail;
-      return [hint];
-    });
-  }
-};
 
 let passDecorType: vscode.TextEditorDecorationType;
 let failDecorType: vscode.TextEditorDecorationType;
@@ -208,11 +181,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
-  const inlayHintsRegistration = vscode.languages.registerInlayHintsProvider(
-    { scheme: 'file' },
-    sourceInlayHintsProvider
-  );
-
   const diagnosticsListener = vscode.languages.onDidChangeDiagnostics((event) => {
     updateSourceAugmentationsForKiteUris(event.uris);
 
@@ -290,6 +258,17 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kite.openSpec', async (filePath: string, line: number) => {
+      if (!filePath) { return; }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+      const editor = await vscode.window.showTextDocument(doc);
+      const pos = new vscode.Position(Math.max(0, (line ?? 1) - 1), 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos));
+    })
+  );
+
   client.start().then(
     () => outputChannel.appendLine('[kite] Language server started successfully'),
     (err) => {
@@ -301,8 +280,6 @@ export function activate(context: vscode.ExtensionContext): void {
     outputChannel,
     kiteWatcher,
     sourceWatcher,
-    inlayHintsRegistration,
-    sourceInlayHintEmitter,
     sourceDiagnosticDecorationType,
     diagnosticsListener,
     closeListener,
@@ -323,7 +300,6 @@ export async function deactivate(): Promise<void> {
 
   kiteDiagnosticsByDocument.clear();
   sourceAugmentations.clear();
-  sourceInlayHintEmitter.fire();
 }
 
 function resolveServerPath(serverPath: string, mode: vscode.ExtensionMode): string {
@@ -426,8 +402,6 @@ function refreshSourceAugmentations(affectedSourceUris: Set<string>): void {
       applySourceDecorations(editor);
     }
   }
-
-  sourceInlayHintEmitter.fire();
 }
 
 function collectAugmentationsForKiteUri(uri: vscode.Uri): Map<string, SourceAugmentation[]> {
