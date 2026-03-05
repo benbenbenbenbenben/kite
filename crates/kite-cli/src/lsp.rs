@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tower_lsp::lsp_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams,
@@ -31,6 +32,7 @@ pub async fn run_stdio() -> Result<()> {
         open_documents: Mutex::new(HashMap::new()),
         workspace_roots: Mutex::new(Vec::new()),
         cached_bindings: Arc::new(Mutex::new(Vec::new())),
+        diagnostics_generation: Arc::new(AtomicU64::new(0)),
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 
@@ -49,6 +51,7 @@ struct Backend {
     open_documents: Mutex<HashMap<Url, String>>,
     workspace_roots: Mutex<Vec<std::path::PathBuf>>,
     cached_bindings: Arc<Mutex<Vec<kite_core::BoundSpec>>>,
+    diagnostics_generation: Arc<AtomicU64>,
 }
 
 impl Backend {
@@ -65,146 +68,104 @@ impl Backend {
         let cached_bindings = self.cached_bindings.clone();
 
         tokio::spawn(async move {
-            client
-                .log_message(
-                    MessageType::INFO,
-                    format!("[kite] spawn_workspace_diagnostics: {} roots", roots.len(),),
-                )
-                .await;
-            for root in &roots {
-                client
-                    .log_message(
-                        MessageType::INFO,
-                        format!("[kite]   root: {}", root.display()),
-                    )
-                    .await;
-            }
+            run_workspace_diagnostics(&client, open_docs, roots, cached_bindings).await;
+        });
+    }
+}
 
-            // Re-check open documents
-            client
-                .log_message(
-                    MessageType::INFO,
-                    "[kite] checking open documents".to_string(),
-                )
-                .await;
-            for (uri, text) in &open_docs {
-                let diagnostics = diagnostics_for_source(text, uri);
-                publish_diagnostics(&client, uri.clone(), diagnostics, None).await;
-            }
-            client
-                .log_message(
-                    MessageType::INFO,
-                    "[kite] open documents check complete".to_string(),
-                )
-                .await;
+async fn run_workspace_diagnostics(
+    client: &Client,
+    open_docs: Vec<(Url, String)>,
+    roots: Vec<std::path::PathBuf>,
+    cached_bindings: Arc<Mutex<Vec<kite_core::BoundSpec>>>,
+) {
+    client
+        .log_message(
+            MessageType::INFO,
+            format!("[kite] run_workspace_diagnostics: {} roots", roots.len(),),
+        )
+        .await;
 
-            // Collect bindings for the entire workspace (fast path: parse-only, no validation)
-            let mut all_bindings = Vec::new();
-            for root in &roots {
-                match kite_core::collect_workspace_bindings(root) {
-                    Ok(bindings) => {
-                        client
-                            .log_message(
-                                MessageType::INFO,
-                                format!(
-                                    "[kite] collected {} bindings from {}",
-                                    bindings.len(),
-                                    root.display()
-                                ),
-                            )
-                            .await;
-                        all_bindings.extend(bindings);
-                    }
-                    Err(err) => {
-                        client
-                            .log_message(
-                                MessageType::WARNING,
-                                format!(
-                                    "[kite] collect_workspace_bindings({}) failed: {:#}",
-                                    root.display(),
-                                    err
-                                ),
-                            )
-                            .await;
-                    }
-                }
-            }
-            client
-                .log_message(
-                    MessageType::INFO,
-                    "[kite] workspace check complete".to_string(),
-                )
-                .await;
+    // Re-check open documents
+    for (uri, text) in &open_docs {
+        let diagnostics = diagnostics_for_source(text, uri);
+        publish_diagnostics(client, uri.clone(), diagnostics, None).await;
+    }
 
-            client
-                .log_message(
-                    MessageType::INFO,
-                    format!("[kite] publishing {} bindings", all_bindings.len()),
-                )
-                .await;
-
-            // Cache bindings for code_lens requests
-            if let Ok(mut cache) = cached_bindings.lock() {
-                *cache = all_bindings.clone();
-            }
-
-            client
-                .send_notification::<PublishAssociations>(serde_json::json!({
-                    "bindings": all_bindings,
-                    "violations": [],
-                }))
-                .await;
-
-            // Phase 3: validate ALL .kite files from the workspace to publish
-            // diagnostics, even for files that aren't open. This enables the
-            // extension to cross-reference errors for source file diagnostics.
-            let open_uris: std::collections::HashSet<String> =
-                open_docs.iter().map(|(uri, _)| uri.to_string()).collect();
-            let mut kite_files: std::collections::BTreeSet<std::path::PathBuf> =
-                std::collections::BTreeSet::new();
-            for binding in &all_bindings {
-                kite_files.insert(binding.kite_file.clone());
-            }
-            let unopened_kite: Vec<_> = kite_files
-                .into_iter()
-                .filter(|f| {
-                    let uri_str = Url::from_file_path(f)
-                        .map(|u| u.to_string())
-                        .unwrap_or_default();
-                    !open_uris.contains(&uri_str)
-                })
-                .collect();
-
-            if !unopened_kite.is_empty() {
+    // Collect bindings for the entire workspace (fast path: parse-only, no validation)
+    let mut all_bindings = Vec::new();
+    for root in &roots {
+        match kite_core::collect_workspace_bindings(root) {
+            Ok(bindings) => {
                 client
                     .log_message(
                         MessageType::INFO,
                         format!(
-                            "[kite] validating {} unopened .kite files",
-                            unopened_kite.len()
+                            "[kite] collected {} bindings from {}",
+                            bindings.len(),
+                            root.display()
                         ),
                     )
                     .await;
-
-                for kite_file in &unopened_kite {
-                    let Ok(source) = std::fs::read_to_string(kite_file) else {
-                        continue;
-                    };
-                    let Ok(uri) = Url::from_file_path(kite_file) else {
-                        continue;
-                    };
-                    let diagnostics = diagnostics_for_source(&source, &uri);
-                    publish_diagnostics(&client, uri, diagnostics, None).await;
-                }
-
+                all_bindings.extend(bindings);
+            }
+            Err(err) => {
                 client
                     .log_message(
-                        MessageType::INFO,
-                        "[kite] background validation complete".to_string(),
+                        MessageType::WARNING,
+                        format!(
+                            "[kite] collect_workspace_bindings({}) failed: {:#}",
+                            root.display(),
+                            err
+                        ),
                     )
                     .await;
             }
-        });
+        }
+    }
+
+    // Cache bindings for code_lens requests
+    if let Ok(mut cache) = cached_bindings.lock() {
+        *cache = all_bindings.clone();
+    }
+
+    client
+        .send_notification::<PublishAssociations>(serde_json::json!({
+            "bindings": all_bindings,
+            "violations": [],
+        }))
+        .await;
+
+    // Phase 3: validate ALL .kite files from the workspace to publish
+    // diagnostics, even for files that aren't open.
+    let open_uris: std::collections::HashSet<String> =
+        open_docs.iter().map(|(uri, _)| uri.to_string()).collect();
+    let mut kite_files: std::collections::BTreeSet<std::path::PathBuf> =
+        std::collections::BTreeSet::new();
+    for binding in &all_bindings {
+        kite_files.insert(binding.kite_file.clone());
+    }
+    let unopened_kite: Vec<_> = kite_files
+        .into_iter()
+        .filter(|f| {
+            let uri_str = Url::from_file_path(f)
+                .map(|u| u.to_string())
+                .unwrap_or_default();
+            !open_uris.contains(&uri_str)
+        })
+        .collect();
+
+    if !unopened_kite.is_empty() {
+        for kite_file in &unopened_kite {
+            let Ok(source) = std::fs::read_to_string(kite_file) else {
+                continue;
+            };
+            let Ok(uri) = Url::from_file_path(kite_file) else {
+                continue;
+            };
+            let diagnostics = diagnostics_for_source(&source, &uri);
+            publish_diagnostics(client, uri, diagnostics, None).await;
+        }
     }
 }
 
@@ -373,8 +334,25 @@ impl LanguageServer for Backend {
             });
             // When a .kite file changes, refresh workspace bindings so that
             // CodeLens and source-file diagnostics update reactively.
+            // Debounce: wait 300ms after the last keystroke before rescanning.
             if is_kite {
-                self.spawn_workspace_diagnostics();
+                let gen = self.diagnostics_generation.fetch_add(1, Ordering::SeqCst) + 1;
+                let gen_arc = self.diagnostics_generation.clone();
+                let backend_client = self.client.clone();
+                let open_docs = self.snapshot_open_documents();
+                let roots = self
+                    .workspace_roots
+                    .lock()
+                    .map(|r| r.clone())
+                    .unwrap_or_default();
+                let cached = self.cached_bindings.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    if gen_arc.load(Ordering::SeqCst) != gen {
+                        return; // superseded by a newer edit
+                    }
+                    run_workspace_diagnostics(&backend_client, open_docs, roots, cached).await;
+                });
             }
         }
     }
