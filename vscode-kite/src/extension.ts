@@ -269,6 +269,17 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('kite.openSource', async (filePath: string, line: number, col: number) => {
+      if (!filePath) { return; }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+      const editor = await vscode.window.showTextDocument(doc);
+      const pos = new vscode.Position(Math.max(0, (line ?? 1) - 1), Math.max(0, (col ?? 1) - 1));
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos));
+    })
+  );
+
   client.start().then(
     () => outputChannel.appendLine('[kite] Language server started successfully'),
     (err) => {

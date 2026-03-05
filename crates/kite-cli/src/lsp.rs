@@ -537,26 +537,69 @@ impl LanguageServer for Backend {
 
     async fn code_lens(&self, params: CodeLensParams) -> jsonrpc::Result<Option<Vec<CodeLens>>> {
         let uri = params.text_document.uri;
-        let Ok(target_path) = uri.to_file_path() else {
+        let Ok(file_path) = uri.to_file_path() else {
             return Ok(None);
         };
-
-        if target_path.extension().and_then(|e| e.to_str()) == Some("kite") {
-            return Ok(None);
-        }
-
-        // Canonicalize to match the canonical paths in cached bindings
-        let target_path = target_path.canonicalize().unwrap_or(target_path);
 
         let bindings = self
             .cached_bindings
             .lock()
             .map(|b| b.clone())
             .unwrap_or_default();
+
+        let is_kite = file_path.extension().and_then(|e| e.to_str()) == Some("kite");
+
         let mut lenses = Vec::new();
 
-        for binding in bindings {
-            if binding.target_path == target_path {
+        if is_kite {
+            // .kite file → show lenses pointing to bound source files
+            let file_path = file_path.canonicalize().unwrap_or(file_path);
+            for binding in &bindings {
+                if binding.kite_file != file_path {
+                    continue;
+                }
+                let line = (binding.kite_span.start_line.saturating_sub(1)) as u32;
+                let range = Range::new(Position::new(line, 0), Position::new(line, 0));
+
+                let target_display = binding
+                    .target_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+
+                let title = if let Some(symbol) = &binding.symbol {
+                    format!("→ {} :: {}", target_display, symbol)
+                } else {
+                    format!("→ {}", target_display)
+                };
+
+                let (target_line, target_col) = if let Some(span) = binding.source_span {
+                    (span.start_line, span.start_column)
+                } else {
+                    (1, 1)
+                };
+
+                lenses.push(CodeLens {
+                    range,
+                    command: Some(Command {
+                        title,
+                        command: "kite.openSource".to_string(),
+                        arguments: Some(vec![
+                            serde_json::json!(binding.target_path.display().to_string()),
+                            serde_json::json!(target_line),
+                            serde_json::json!(target_col),
+                        ]),
+                    }),
+                    data: None,
+                });
+            }
+        } else {
+            // Source file → show lenses pointing to kite specs
+            let file_path = file_path.canonicalize().unwrap_or(file_path);
+            for binding in &bindings {
+                if binding.target_path != file_path {
+                    continue;
+                }
                 let Some(span) = binding.source_span else {
                     continue;
                 };
