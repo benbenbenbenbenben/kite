@@ -618,9 +618,9 @@ impl LanguageServer for Backend {
                     .unwrap_or("unknown");
 
                 let title = if let Some(symbol) = &binding.symbol {
-                    format!("→ {} :: {}", target_display, symbol)
+                    format!("📄 {} :: {}", target_display, symbol)
                 } else {
-                    format!("→ {}", target_display)
+                    format!("📄 {}", target_display)
                 };
 
                 let (target_line, target_col) = if let Some(span) = binding.source_span {
