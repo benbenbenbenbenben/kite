@@ -327,15 +327,18 @@ pub fn check_workspace(root: &Path) -> Result<CheckReport> {
 /// information — no grammar loading, no WASM, no validation.
 /// Intended for the LSP decoration pipeline where we just need spec→file mappings.
 pub fn collect_workspace_bindings(root: &Path) -> Result<Vec<BoundSpec>> {
-    collect_workspace_bindings_with_overrides(root, &std::collections::HashMap::new())
+    collect_workspace_bindings_with_overrides(root, &std::collections::HashMap::new(), false)
 }
 
 /// Like `collect_workspace_bindings` but accepts in-memory content overrides
 /// for open documents. If a `.kite` file has an entry in `content_overrides`,
 /// that content is used instead of reading from disk.
+/// When `skip_source_spans` is true, the expensive WASM-based source span
+/// resolution is skipped — useful for fast incremental refreshes.
 pub fn collect_workspace_bindings_with_overrides(
     root: &Path,
     content_overrides: &std::collections::HashMap<PathBuf, String>,
+    skip_source_spans: bool,
 ) -> Result<Vec<BoundSpec>> {
     let mut kite_files = Vec::new();
     walk_for_kite_files(root, &mut kite_files, 0);
@@ -443,7 +446,10 @@ pub fn collect_workspace_bindings_with_overrides(
     }
     // Resolve source spans by batching symbol lookups per target file.
     // This loads the grammar once per language and parses each file once.
-    resolve_binding_spans(&mut all_bindings, root);
+    // Skip when called from the fast incremental refresh path.
+    if !skip_source_spans {
+        resolve_binding_spans(&mut all_bindings, root);
+    }
 
     Ok(all_bindings)
 }

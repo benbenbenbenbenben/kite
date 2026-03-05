@@ -79,14 +79,7 @@ async fn run_workspace_diagnostics(
     roots: Vec<std::path::PathBuf>,
     cached_bindings: Arc<Mutex<Vec<kite_core::BoundSpec>>>,
 ) {
-    client
-        .log_message(
-            MessageType::INFO,
-            format!("[kite] run_workspace_diagnostics: {} roots", roots.len(),),
-        )
-        .await;
-
-    // Re-check open documents
+    // Re-check open documents (publishes .kite diagnostics from buffer content)
     for (uri, text) in &open_docs {
         let diagnostics = diagnostics_for_source(text, uri);
         publish_diagnostics(client, uri.clone(), diagnostics, None).await;
@@ -100,21 +93,16 @@ async fn run_workspace_diagnostics(
         .filter_map(|(uri, text)| uri.to_file_path().ok().map(|p| (p, text.clone())))
         .collect();
 
-    // Collect bindings for the entire workspace (fast path: parse-only, no validation)
+    // Collect bindings with skip_source_spans=true for speed.
+    // Source spans are preserved from the cache below.
     let mut all_bindings = Vec::new();
     for root in &roots {
-        match kite_core::collect_workspace_bindings_with_overrides(root, &content_overrides) {
+        match kite_core::collect_workspace_bindings_with_overrides(
+            root,
+            &content_overrides,
+            true, // skip_source_spans — don't load WASM grammars
+        ) {
             Ok(bindings) => {
-                client
-                    .log_message(
-                        MessageType::INFO,
-                        format!(
-                            "[kite] collected {} bindings from {}",
-                            bindings.len(),
-                            root.display()
-                        ),
-                    )
-                    .await;
                 all_bindings.extend(bindings);
             }
             Err(err) => {
@@ -132,7 +120,30 @@ async fn run_workspace_diagnostics(
         }
     }
 
-    // Cache bindings for code_lens requests
+    // Merge source_span from cached bindings so CodeLens positions are retained.
+    // Build a lookup: (target_path, symbol) -> source_span
+    if let Ok(cache) = cached_bindings.lock() {
+        let mut span_cache: std::collections::HashMap<
+            (std::path::PathBuf, String),
+            kite_core::ViolationSpan,
+        > = std::collections::HashMap::new();
+        for b in cache.iter() {
+            if let (Some(sym), Some(span)) = (&b.symbol, &b.source_span) {
+                span_cache.insert((b.target_path.clone(), sym.clone()), *span);
+            }
+        }
+        for b in &mut all_bindings {
+            if b.source_span.is_none() {
+                if let Some(sym) = &b.symbol {
+                    if let Some(span) = span_cache.get(&(b.target_path.clone(), sym.clone())) {
+                        b.source_span = Some(*span);
+                    }
+                }
+            }
+        }
+    }
+
+    // Cache bindings for future code_lens and span merges
     if let Ok(mut cache) = cached_bindings.lock() {
         *cache = all_bindings.clone();
     }
@@ -144,8 +155,7 @@ async fn run_workspace_diagnostics(
         }))
         .await;
 
-    // Phase 3: validate ALL .kite files from the workspace to publish
-    // diagnostics, even for files that aren't open.
+    // Validate unopened .kite files to publish cross-file diagnostics
     let open_uris: std::collections::HashSet<String> =
         open_docs.iter().map(|(uri, _)| uri.to_string()).collect();
     let mut kite_files: std::collections::BTreeSet<std::path::PathBuf> =
