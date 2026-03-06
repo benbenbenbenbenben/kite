@@ -1,7 +1,3 @@
-Here is the `README.md` for the repository. It pitches the philosophy, explains the Tree-sitter magic, and gives a clear "getting started" vibe.
-
----
-
 # 🪁 Kite
 
 **Kite is a continuous architecture enforcement tool for Domain-Driven Design (DDD).** It provides a Domain-Specific Language (`.kite`) to define your Bounded Contexts, Aggregates, and Sagas. But unlike traditional Model-Driven tools, **Kite does not generate code.** Instead, it uses [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) (via [this `rust-sitter` fork](https://github.com/benbenbenbenbenben/krust-sitter)) to parse your actual implementation files (currently Rust and TypeScript/TSX) and validates that your codebase structurally matches your architectural design.
@@ -16,9 +12,9 @@ You start a project with a beautiful whiteboard session. You define strict Bound
 
 Six months later:
 
-* An "Aggregate Root" has public setters everywhere.
-* The `Logistics` context is directly querying the `Identity` database.
-* The codebase uses the term "User", but the business team calls them "Patrons".
+- An "Aggregate Root" has public setters everywhere.
+- The `Logistics` context is directly querying the `Identity` database.
+- The codebase uses the term "User", but the business team calls them "Patrons".
 
 The whiteboard lied. The code is the only truth.
 
@@ -35,13 +31,13 @@ context SalesContext {
     }
 
     aggregate Order bound to "src/domain/order.rs" {
-        
+
         // State mutations must be explicit commands
-        command ship() 
+        command ship()
             bound symbol "Order::ship";
-            
+
         // Invariants must be explicitly handled in the code
-        invariant MustHaveItems 
+        invariant MustHaveItems
             bound symbol "Order::verify_not_empty";
     }
 }
@@ -126,12 +122,12 @@ Kite is built in **Rust** and leverages `rust-sitter`.
 
 Kite is part of the **kodus ecosystem**, a suite of tools designed for high-assurance, easily modeled distributed systems:
 
-* **Kodus**: The secure server runtime.
-* **Kettu**: The agile, WASM-native implementation language.
-* **Karu**: The strict security and authorization policy language.
-* **Kite**: The structural domain and architecture verifier.
+- **Kodus**: The secure server runtime.
+- **Kettu**: The agile, WASM-native implementation language.
+- **Karu**: The strict security and authorization policy language.
+- **Kite**: The structural domain and architecture verifier.
 
-*(Note: Kite works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)*
+_(Note: Kite works perfectly as a standalone tool for existing Rust, Go, or TypeScript projects!)_
 
 ---
 
@@ -217,8 +213,8 @@ Kite uses a data-driven **Grammar Registry** to support different programming la
 1. **Add the Grammar**: Place the `tree-sitter-<lang>.wasm` file in `grammars/<lang>/`.
 2. **Define the Manifest**: Create `grammars/<lang>/manifest.toml` declaring the extensions and query paths.
 3. **Write Queries**:
-   * `symbol_exists.scm`: A Tree-sitter query that captures the `@name` of declarations (classes, functions, etc.).
-   * `boundary_references`: (Optional) A query in the manifest or a separate file that captures `@reference` tokens for architectural boundary enforcement.
+   - `symbol_exists.scm`: A Tree-sitter query that captures the `@name` of declarations (classes, functions, etc.).
+   - `boundary_references`: (Optional) A query in the manifest or a separate file that captures `@reference` tokens for architectural boundary enforcement.
 
 Kite automatically loads these assets at runtime. Check out the existing [Rust](grammars/rust/) or [TypeScript](grammars/typescript/) definitions for reference.
 
