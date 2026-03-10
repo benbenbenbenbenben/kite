@@ -6,6 +6,11 @@ display_name = "Rust"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
+symbol_arity = "queries/symbol_arity.scm"
+
+[arity]
+parameter_kinds = ["parameter", "variadic_parameter"]
+
 
 [queries.boundary_references]
 source = """

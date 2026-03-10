@@ -7,6 +7,11 @@ display_name = "TypeScript"
 
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
+symbol_arity = "queries/symbol_arity.scm"
+
+[arity]
+parameter_kinds = ["required_parameter", "optional_parameter", "rest_pattern"]
+
 
 [queries.boundary_references]
 source = """

@@ -7,6 +7,9 @@ display_name = "Prisma"
 [queries]
 symbol_exists = "queries/symbol_exists.scm"
 
+[arity]
+declaration_only = true
+
 [queries.boundary_references]
 source = """
 [

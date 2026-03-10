@@ -138,7 +138,9 @@ impl<'a> AdapterRuntimeEngine<'a> {
         target_path: &Path,
         source: &str,
         symbol: &str,
-        query: &str,
+        exists_query: &str,
+        arity_config: &crate::grammar_registry::ArityConfig,
+        arity_query: Option<&str>,
     ) -> Result<Option<usize>> {
         let is_tsx = is_tsx_path(target_path);
 
@@ -150,7 +152,9 @@ impl<'a> AdapterRuntimeEngine<'a> {
                 is_tsx,
                 source,
                 symbol,
-                query,
+                exists_query,
+                arity_config,
+                arity_query,
             )
         }
 
@@ -161,7 +165,7 @@ impl<'a> AdapterRuntimeEngine<'a> {
                 target_path,
                 source,
                 Some(symbol),
-                Some(query),
+                Some(exists_query),
             )
             .map(|maybe| maybe.flatten())
         }

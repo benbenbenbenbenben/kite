@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
-use crate::grammar_registry::GrammarRegistry;
+use crate::grammar_registry::{ArityConfig, GrammarRegistry};
 
 pub fn symbol_exists(
     registry: &GrammarRegistry,
@@ -151,17 +151,31 @@ pub fn symbol_arity(
     is_tsx: bool,
     source: &str,
     symbol: &str,
-    query_source: &str,
+    exists_query_source: &str,
+    arity_config: &ArityConfig,
+    arity_query_source: Option<&str>,
 ) -> Result<Option<usize>> {
-    // Prisma models are declaration-only (arity 0) — no function parameters
-    if language == "prisma" {
-        if symbol_exists(registry, language, is_tsx, source, symbol, query_source)?.unwrap_or(false)
+    // Declaration-only languages (e.g. Prisma): arity is always 0
+    if arity_config.declaration_only {
+        if symbol_exists(
+            registry,
+            language,
+            is_tsx,
+            source,
+            symbol,
+            exists_query_source,
+        )?
+        .unwrap_or(false)
         {
             return Ok(Some(0));
         } else {
             return Ok(None);
         }
     }
+
+    let Some(arity_query_source) = arity_query_source else {
+        return Ok(None);
+    };
 
     let Some((mut parser, ts_language)) = create_parser(registry, language, is_tsx)? else {
         return Ok(None);
@@ -171,7 +185,7 @@ pub fn symbol_arity(
         .parse(source, None)
         .ok_or_else(|| anyhow::anyhow!("tree-sitter failed to parse {} source", language))?;
 
-    let query = Query::new(&ts_language, query_source)?;
+    let query = Query::new(&ts_language, arity_query_source)?;
     let mut query_cursor = QueryCursor::new();
     let target_symbol = symbol_leaf_name(symbol);
     let capture_names = query.capture_names();
@@ -179,34 +193,43 @@ pub fn symbol_arity(
 
     let mut query_matches = query_cursor.matches(&query, tree.root_node(), source.as_bytes());
     while let Some(query_match) = query_matches.next() {
+        let mut matched_name = false;
+        let mut params_node = None;
+
         for capture in query_match.captures {
             let capture_name = capture_names[capture.index as usize];
-            if capture_name != "name" {
-                continue;
+            match capture_name {
+                "name" => {
+                    if let Ok(captured_text) = capture.node.utf8_text(source.as_bytes()) {
+                        if captured_text == target_symbol {
+                            matched_name = true;
+                        }
+                    }
+                }
+                "params" => {
+                    params_node = Some(capture.node);
+                }
+                _ => {}
             }
-            let Ok(captured_text) = capture.node.utf8_text(source.as_bytes()) else {
-                continue;
-            };
-            if captured_text != target_symbol {
-                continue;
+        }
+
+        if matched_name {
+            if let Some(params) = params_node {
+                let mut params_cursor = params.walk();
+                let arity = params
+                    .named_children(&mut params_cursor)
+                    .filter(|node| {
+                        arity_config
+                            .parameter_kinds
+                            .iter()
+                            .any(|k| k == node.kind())
+                    })
+                    .count();
+                arities.push(arity);
+            } else {
+                // Function matched but no params node — arity 0
+                arities.push(0);
             }
-
-            let Some(function_item) = enclosing_function_like(language, capture.node) else {
-                continue;
-            };
-            let Some(parameters) = function_item
-                .child_by_field_name("parameters")
-                .or_else(|| function_item.child_by_field_name("formal_parameters"))
-            else {
-                continue;
-            };
-
-            let mut params_cursor = parameters.walk();
-            let arity = parameters
-                .named_children(&mut params_cursor)
-                .filter(|node| is_parameter_node(language, node))
-                .count();
-            arities.push(arity);
         }
     }
 
@@ -368,42 +391,4 @@ fn symbol_leaf_name(symbol: &str) -> &str {
         .rsplit(|c| matches!(c, ':' | '.' | '#'))
         .find(|segment| !segment.is_empty())
         .unwrap_or(symbol)
-}
-
-fn enclosing_function_like<'a>(
-    language: &str,
-    mut node: tree_sitter::Node<'a>,
-) -> Option<tree_sitter::Node<'a>> {
-    loop {
-        let kind = node.kind();
-        let is_function = match language {
-            "rust" => kind == "function_item",
-            "typescript" => matches!(
-                kind,
-                "function_declaration"
-                    | "method_definition"
-                    | "arrow_function"
-                    | "generator_function_declaration"
-                    | "function_signature"
-                    | "method_signature"
-                    | "abstract_method_signature"
-            ),
-            _ => false,
-        };
-        if is_function {
-            return Some(node);
-        }
-        node = node.parent()?;
-    }
-}
-
-fn is_parameter_node(language: &str, node: &tree_sitter::Node<'_>) -> bool {
-    match language {
-        "rust" => matches!(node.kind(), "parameter" | "variadic_parameter"),
-        "typescript" => matches!(
-            node.kind(),
-            "required_parameter" | "optional_parameter" | "rest_pattern"
-        ),
-        _ => false,
-    }
 }

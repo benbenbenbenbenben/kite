@@ -2296,15 +2296,26 @@ fn validate_command_binding_arity(
     if !grammar_registry.has_language(&language) {
         return Ok(());
     }
-    let Some(query) = grammar_registry.query_for(&language, "symbol_exists")? else {
+    let Some(exists_query) = grammar_registry.query_for(&language, "symbol_exists")? else {
         return Ok(());
     };
+    let Some(arity_config) = grammar_registry.arity_config(&language) else {
+        return Ok(());
+    };
+    let arity_query = grammar_registry.query_for(&language, "symbol_arity")?;
 
     let source = std::fs::read_to_string(&target_path)
         .with_context(|| format!("failed to read {}", target_path.display()))?;
     let symbol = unquote(&symbol_binding.symbol.text);
-    let expected_arity =
-        adapter_runtime.symbol_arity(&language, &target_path, &source, &symbol, &query)?;
+    let expected_arity = adapter_runtime.symbol_arity(
+        &language,
+        &target_path,
+        &source,
+        &symbol,
+        &exists_query,
+        arity_config,
+        arity_query.as_deref(),
+    )?;
     let Some(expected_arity) = expected_arity else {
         return Ok(());
     };
@@ -2316,7 +2327,7 @@ fn validate_command_binding_arity(
     let language_name = language_display_name_from_registry(grammar_registry, &language);
 
     let source_span = adapter_runtime
-        .find_symbol_span(&language, &target_path, &source, &symbol, &query)
+        .find_symbol_span(&language, &target_path, &source, &symbol, &exists_query)
         .ok()
         .flatten();
 

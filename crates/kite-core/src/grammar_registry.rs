@@ -8,9 +8,20 @@ pub struct BoundaryReferenceQuery {
     pub source: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ArityConfig {
+    /// Node kinds that count as parameters (e.g. ["parameter", "variadic_parameter"])
+    #[serde(default)]
+    pub parameter_kinds: Vec<String>,
+    /// If true, symbol is declaration-only (arity = 0), no query needed
+    #[serde(default)]
+    pub declaration_only: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct QueriesManifest {
     pub symbol_exists: Option<String>,
+    pub symbol_arity: Option<String>,
     pub boundary_references: Option<BoundaryReferenceQuery>,
 }
 
@@ -24,6 +35,7 @@ pub struct GrammarManifest {
     pub extensions: Option<Vec<String>>,
     pub display_name: Option<String>,
     pub queries: Option<QueriesManifest>,
+    pub arity: Option<ArityConfig>,
 }
 
 #[derive(Debug)]
@@ -81,6 +93,7 @@ impl GrammarRegistry {
 
         let query_rel_path = match rule {
             "symbol_exists" => queries.symbol_exists.as_deref(),
+            "symbol_arity" => queries.symbol_arity.as_deref(),
             _ => None,
         };
 
@@ -165,5 +178,11 @@ impl GrammarRegistry {
             .get(language)
             .and_then(|g| g.manifest.display_name.as_deref())
             .unwrap_or("bound")
+    }
+
+    pub fn arity_config(&self, language: &str) -> Option<&ArityConfig> {
+        self.grammars
+            .get(language)
+            .and_then(|g| g.manifest.arity.as_ref())
     }
 }
