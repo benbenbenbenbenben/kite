@@ -8,7 +8,7 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/vscode-kite",
-        "${workspaceFolder}/examples"
+        "${workspaceFolder}/.vscode/dev.code-workspace"
       ],
       "outFiles": ["${workspaceFolder}/vscode-kite/out/**/*.js"],
       "preLaunchTask": "kite-extension: debug prep"
